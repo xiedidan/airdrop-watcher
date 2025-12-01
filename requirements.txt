@@ -1,0 +1,42 @@
+# WebMon - 网页监控工具依赖
+
+# 浏览器自动化
+playwright>=1.40.0
+
+# HTML解析
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+
+# 网络请求
+requests>=2.31.0
+aiohttp>=3.9.0
+
+# 配置管理
+python-dotenv>=1.0.0
+pydantic>=2.5.0
+
+# 日志管理
+loguru>=0.7.0
+
+# 异步编程
+asyncio
+colorama>=0.4.6
+
+# 数据处理和比较
+difflib
+json5>=0.9.0
+
+# 工具类
+typing-extensions>=4.8.0
+tabulate>=0.9.0
+click>=8.1.0
+
+# 测试相关
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+
+# 开发工具
+black>=23.0.0
+flake8>=6.0.0
+mypy>=1.7.0

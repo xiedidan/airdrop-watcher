@@ -1,0 +1,75 @@
+# 环境变量和敏感配置
+.env
+config.json
+
+# Python 缓存和编译文件
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# 虚拟环境
+venv/
+env/
+ENV/
+.venv
+
+# 分发和打包
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# 测试和覆盖率
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# 日志文件和目录
+logs/
+*.log
+test.log
+my_logs/
+demo_logs/
+
+# 数据和备份
+data/
+backup/
+archive/
+
+# 调试文件
+debug_*/
+test_*.py
+debug_*.py
+test_analysis/
+
+# IDE 和编辑器
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Playwright
+playwright-report/
+test-results/
+.playwright/
+
+# 项目特定
+project_progress_report.md
