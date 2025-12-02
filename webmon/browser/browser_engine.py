@@ -14,6 +14,7 @@ from playwright.async_api import Error as PlaywrightError
 
 from ..exceptions import BrowserError, NetworkError, ConfigurationError
 from ..utils.logger import get_logger
+from .network_config import NetworkConfig
 
 
 class BrowserEngine:
@@ -22,37 +23,40 @@ class BrowserEngine:
     def __init__(self, config_manager):
         """
         初始化浏览器引擎
-        
+
         Args:
             config_manager: 配置管理器
         """
         self.config_manager = config_manager
         self.logger = get_logger(__name__)
-        
+
         # Playwright实例
         self.playwright = None
         self.browser = None
         self.context = None
-        
+
         # 配置参数
         self.browser_type = "chromium"  # 默认使用Chromium
         self.headless = True
         self.timeout = 30000  # 默认超时时间30秒
         self.user_agent = None
         self.viewport = {"width": 1920, "height": 1080}
-        
+
         # 性能优化配置
         self.block_resources = True  # 是否拦截不必要的资源
         self.blocked_resource_types = ["image", "stylesheet", "font", "media"]
-        
+
         # 反检测配置
         self.enable_stealth = True  # 是否启用反检测
-        
+
         # 状态管理
         self.is_initialized = False
         self.page_count = 0
         self.start_time = None
-        
+
+        # 网络配置管理器
+        self.network_config = NetworkConfig(config_manager)
+
         # 加载配置
         self._load_browser_config()
     
@@ -156,12 +160,16 @@ class BrowserEngine:
         except Exception as e:
             raise BrowserError(f"浏览器启动失败: {e}")
     
-    async def _create_context(self):
-        """创建浏览器上下文"""
+    async def _create_context(self, url: Optional[str] = None):
+        """
+        创建浏览器上下文
+
+        Args:
+            url: 目标URL（用于代理判断）
+        """
         try:
             context_options = {
                 "viewport": self.viewport,
-                "user_agent": self.user_agent,
                 "locale": "zh-CN",
                 "timezone_id": "Asia/Shanghai",
                 "permissions": ["geolocation"],
@@ -171,26 +179,37 @@ class BrowserEngine:
                     "Upgrade-Insecure-Requests": "1"
                 }
             }
-            
+
+            # 使用NetworkConfig获取网络相关配置
+            network_options = self.network_config.get_browser_context_options(url)
+            context_options.update(network_options)
+
+            # User-Agent优先使用NetworkConfig中的配置
+            user_agent = self.network_config.get_user_agent()
+            if user_agent:
+                context_options['user_agent'] = user_agent
+
             # 启用反检测功能
             if self.enable_stealth:
                 context_options.update({
                     "bypass_csp": True,
-                    "ignore_https_errors": True
                 })
-            
+                # 如果NetworkConfig没有配置ignore_https_errors，则默认启用
+                if 'ignore_https_errors' not in context_options:
+                    context_options['ignore_https_errors'] = True
+
             self.context = await self.browser.new_context(**context_options)
-            
+
             # 设置默认超时
             self.context.set_default_timeout(self.timeout)
             self.context.set_default_navigation_timeout(self.timeout)
-            
+
             # 设置资源拦截
             if self.block_resources:
                 await self._setup_resource_blocking()
-            
+
             self.logger.info("浏览器上下文已创建")
-            
+
         except Exception as e:
             raise BrowserError(f"创建浏览器上下文失败: {e}")
     

@@ -7,6 +7,7 @@
 from .browser_engine import BrowserEngine, BrowserPool
 from .resource_manager import ResourceManager, ResourcePool, BrowserResource
 from .performance_optimizer import PerformanceOptimizer, MemoryManager, ContentCache, ResourceBlocker
+from .network_config import NetworkConfig, ProxyRotator
 
 __all__ = [
     'BrowserEngine',
@@ -17,7 +18,9 @@ __all__ = [
     'PerformanceOptimizer',
     'MemoryManager',
     'ContentCache',
-    'ResourceBlocker'
+    'ResourceBlocker',
+    'NetworkConfig',
+    'ProxyRotator'
 ]
 
 # 版本信息
