@@ -347,6 +347,13 @@ class StatusCommand(Command):
         print(f"   启用任务: {tasks_info['enabled']} | 禁用任务: {tasks_info['disabled']}")
         if tasks_info['enabled'] > 0:
             print(f"   平均检测间隔: {tasks_info['average_interval']} 分钟")
+
+        # 显示任务状态统计
+        status_breakdown = tasks_info.get('status_breakdown', {})
+        if status_breakdown:
+            print(f"\n   任务状态统计:")
+            for status, count in status_breakdown.items():
+                print(f"      {status}: {count}")
         print()
         
         # 历史统计
@@ -423,6 +430,34 @@ class StatusCommand(Command):
             print(f"\n🔄 最近变化:")
             for change in history_info['recent_changes'][:3]:
                 print(f"   📝 {change['timestamp'][:19]} - 相似度: {change['similarity']:.2f}, 变化数: {change['change_count']}")
+
+        # 显示每个任务的详细状态
+        print(f"\n📋 任务详细状态:")
+        print("=" * 100)
+        tasks = self.task_storage.list_tasks()
+        if tasks:
+            for task in tasks:
+                # 任务状态图标
+                enabled_icon = "✅" if task.enabled else "❌"
+                status_icon = {
+                    'active': '🟢',
+                    'error': '🔴',
+                    'idle': '🟡',
+                    'unknown': '⚪'
+                }.get(task.status or 'unknown', '⚪')
+
+                print(f"\n{enabled_icon} {status_icon} [{task.id[:8]}] {task.name}")
+                print(f"   URL: {task.url}")
+                print(f"   状态: {task.status or 'unknown'} | 启用: {'是' if task.enabled else '否'}")
+                print(f"   间隔: {task.interval}分钟 | 超时: {task.timeout}ms")
+                if task.last_check:
+                    print(f"   最后检测: {task.last_check.isoformat()[:19]}")
+                if task.last_change:
+                    print(f"   最后变化: {task.last_change.isoformat()[:19]}")
+                print(f"   变化次数: {task.change_count}")
+        else:
+            print("   暂无任务")
+        print("=" * 100)
     
     def _format_json_output(self, status_info: Dict[str, Any]) -> str:
         """格式化JSON输出"""

@@ -79,20 +79,22 @@ class ListCommand(Command):
         if not tasks:
             print("暂无任务")
             return
-        
+
         # 计算列宽
-        headers = ['ID', '名称', 'URL', '间隔', '选择器', '状态']
+        headers = ['ID', '名称', 'URL', '间隔', '选择器', '状态', '启用']
         rows = []
-        
+
         for task in tasks:
             task_id = task.get('id', '')[:8]
             name = task.get('name', '')
             url = self._truncate_url(task.get('url', ''))
             interval = f"{task.get('interval', 0)}分钟"
             selector = task.get('selector', '') or '-'
-            status = "启用" if task.get('enabled', True) else "禁用"
-            
-            rows.append([task_id, name, url, interval, selector, status])
+            # 显示真实的 status 字段
+            status = task.get('status', 'unknown') or 'unknown'
+            enabled = "是" if task.get('enabled', True) else "否"
+
+            rows.append([task_id, name, url, interval, selector, status, enabled])
         
         # 使用tabulate输出表格
         try:

@@ -149,17 +149,20 @@ class StartCommand(Command):
             if not task:
                 print(f"❌ 未找到任务: {task_identifier}")
                 return
-            
+
+            # 如果任务被禁用，自动启用它
             if not task.enabled:
-                print(f"⚠️  任务已禁用: {task.name}")
-                return
-            
+                print(f"⚠️  任务 {task.name} 当前已禁用，正在自动启用...")
+                self._enable_task(task.id)
+                task.enabled = True  # 更新本地对象
+                print(f"✅ 任务已启用")
+
             print(f"🎯 正在运行特定任务: {task.name} (ID: {task.id})")
-            
+
             # 直接执行任务（单次）
             # 这里简化处理，实际可以调用调度器的执行引擎
             print(f"📋 任务 {task.name} 执行完成")
-            
+
         except Exception as e:
             self.logger.error(f"运行特定任务失败: {e}")
             print(f"❌ 运行特定任务失败: {e}")
@@ -184,7 +187,42 @@ class StartCommand(Command):
                 return task
         
         return None
-    
+
+    def _enable_task(self, task_id: str) -> bool:
+        """启用指定任务"""
+        try:
+            import json
+            from pathlib import Path
+
+            config_file = Path('config/config.json')
+
+            # 读取配置
+            with open(config_file, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+
+            # 找到任务并启用
+            for task in config.get('tasks', []):
+                if task['id'] == task_id:
+                    task['enabled'] = True
+                    task['updated_at'] = self._get_current_timestamp()
+                    break
+
+            # 保存配置
+            with open(config_file, 'w', encoding='utf-8') as f:
+                json.dump(config, f, indent=2, ensure_ascii=False)
+
+            self.logger.info(f"任务已启用: {task_id}")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"启用任务失败: {e}")
+            return False
+
+    def _get_current_timestamp(self) -> str:
+        """获取当前时间戳"""
+        from datetime import datetime
+        return datetime.now().isoformat()
+
     def _is_service_running(self) -> bool:
         """检查服务是否已在运行"""
         try:
