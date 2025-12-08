@@ -31,7 +31,12 @@ class Task:
     # 统计信息
     change_count: int = 0  # 变化次数
     status: str = "active"  # 任务状态: active, paused, error
-    
+
+    # 错误跟踪（用于自动恢复）
+    error_count: int = 0  # 连续错误次数
+    last_error: Optional[datetime] = None  # 最后一次错误时间
+    last_error_message: Optional[str] = None  # 最后一次错误信息
+
     # 扩展字段
     metadata: Dict[str, Any] = field(default_factory=dict)  # 扩展元数据
     
@@ -56,6 +61,9 @@ class Task:
             'last_change': self.last_change.isoformat() if self.last_change else None,
             'change_count': self.change_count,
             'status': self.status,
+            'error_count': self.error_count,
+            'last_error': self.last_error.isoformat() if self.last_error else None,
+            'last_error_message': self.last_error_message,
             'metadata': self.metadata
         }
     
@@ -63,7 +71,7 @@ class Task:
     def from_dict(cls, data: Dict[str, Any]) -> 'Task':
         """从字典创建任务对象"""
         # 处理时间戳字段
-        for field_name in ['created_at', 'updated_at', 'last_check', 'last_change']:
+        for field_name in ['created_at', 'updated_at', 'last_check', 'last_change', 'last_error']:
             if field_name in data and data[field_name]:
                 if isinstance(data[field_name], str):
                     data[field_name] = datetime.fromisoformat(data[field_name])

@@ -14,6 +14,7 @@ import sys
 
 from webmon.utils.logger import get_logger
 from webmon.models.task import Task
+from webmon.models.check_result import CheckResult
 from webmon.storage.task_storage import TaskStorage
 from webmon.storage.history_storage import HistoryStorage
 from webmon.config import ConfigManager
@@ -317,7 +318,43 @@ class TaskScheduler:
             
         except Exception as e:
             self.logger.error(f"调度任务 {task.name} 失败: {e}")
-    
+
+    async def _schedule_task_with_delay(self, task: Task, delay_seconds: int):
+        """延迟调度任务（用于错误恢复）"""
+        try:
+            next_run = datetime.now() + timedelta(seconds=delay_seconds)
+
+            job = {
+                'task': task,
+                'next_run': next_run,
+                'priority': self.priority_manager.calculate_priority(task) - 20,  # 降低优先级
+                'retry_count': 0
+            }
+
+            await self.job_queue.put(job)
+
+            self.task_next_run[task.id] = next_run
+            self.logger.info(
+                f"任务 {task.name} (ID: {task.id}) 已调度错误恢复，"
+                f"将在 {delay_seconds}秒 后重试（{next_run.strftime('%Y-%m-%d %H:%M:%S')}）"
+            )
+
+        except Exception as e:
+            self.logger.error(f"延迟调度任务 {task.name} 失败: {e}")
+
+    def _calculate_error_backoff(self, error_count: int) -> int:
+        """计算错误退避时间（指数退避）"""
+        # 基础间隔：5分钟
+        base_interval = 300  # 秒
+
+        # 指数退避：2^error_count * base_interval
+        # 最大退避时间：24小时
+        backoff = min(base_interval * (2 ** (error_count - 1)), 86400)
+
+        self.logger.debug(f"错误计数 {error_count}，计算退避时间: {backoff}秒 ({backoff/60:.1f}分钟)")
+
+        return int(backoff)
+
     async def _scheduler_loop(self):
         """主调度循环"""
         self.logger.info("调度循环已启动")
@@ -337,7 +374,7 @@ class TaskScheduler:
                     ready_jobs = await self.job_queue.get_ready_jobs(now)
                     
                     for job in ready_jobs:
-                        task = job['task']
+                        task = job.task
 
                         # 使用锁保护 running_tasks 的访问
                         async with self._running_tasks_lock:
@@ -350,7 +387,7 @@ class TaskScheduler:
                             if len(self.running_tasks) >= self.max_concurrent_tasks:
                                 self.logger.debug(f"并发任务数已达上限 ({self.max_concurrent_tasks})，任务 {task.name} 将等待")
                                 # 重新放入队列，稍后重试
-                                await self.job_queue.put(job)
+                                await self.job_queue.put(job.task, job.priority, job.next_run)
                                 continue
 
                             # 启动任务执行
@@ -406,53 +443,88 @@ class TaskScheduler:
                 # 获取网页内容
                 page_content = await self.browser_engine.get_page_content(
                     url=task.url,
-                    selector=task.selectors[0] if task.selectors else None,
-                    timeout=task.timeout,
-                    resource=resource
+                    selectors=task.selectors if task.selectors else None
                 )
                 
                 if not page_content:
                     raise Exception("无法获取网页内容")
-                
+
+                # 获取历史内容
+                previous_result = self.history_storage.get_latest_check_result(task.id)
+                old_content = previous_result.content_preview if previous_result and hasattr(previous_result, 'content_preview') else ""
+
                 # 检测变化
-                check_result = await self.change_detector.detect_changes(
-                    task=task,
-                    current_content=page_content
+                check_result_dict = await self.change_detector.detect_changes(
+                    task_id=task.id,
+                    url=task.url,
+                    old_content=old_content,
+                    new_content=page_content.get('content', '') if isinstance(page_content, dict) else str(page_content),
+                    selectors=task.selectors
                 )
-                
+
+                # 将字典转换为CheckResult对象
+                check_result = CheckResult(
+                    task_id=check_result_dict.get('task_id', task.id),
+                    url=check_result_dict.get('url', task.url),
+                    changed=check_result_dict.get('changed', False),
+                    change_type=check_result_dict.get('change_type', 'none'),
+                    content_hash=check_result_dict.get('content_hash', ''),
+                    timestamp=check_result_dict.get('timestamp', datetime.now())
+                )
+
+                # 保存内容预览（用于下次对比）
+                new_content = page_content.get('content', '') if isinstance(page_content, dict) else str(page_content)
+                check_result.set_content(new_content, calculate_hash=False)  # hash已经计算过了
+
                 # 保存检测结果
-                await self.history_storage.add_check_result(task.id, check_result)
-                
+                self.history_storage.add_check_result(check_result)
+
                 # 如果有变化，发送通知
                 if check_result.changed:
                     self.stats['total_changes'] += 1
-                    
-                    # 获取变化详情
-                    change_details = await self.change_detector.get_change_details(
-                        task=task,
-                        old_content=check_result.previous_content,
-                        new_content=page_content
-                    )
-                    
-                    # 保存变化详情
-                    await self.history_storage.add_change_details(task.id, change_details)
-                    
+
+                    # 简化通知：直接使用基本信息发送通知，跳过获取详细变化
+                    self.logger.info(f"检测到变化 - 任务: {task.name}, URL: {task.url}")
+
                     # 发送通知
-                    await self.notification_service.send_webpage_change_notification(
-                        task=task,
-                        check_result=check_result,
-                        change_details=change_details
-                    )
-                    
-                    self.logger.info(f"任务 {task.name} 检测到变化，已发送通知")
+                    try:
+                        await self.notification_service.send_change_notification(
+                            task_name=task.name,
+                            url=task.url,
+                            change_summary=f"检测到内容变化 - {check_result.change_type}"
+                        )
+                        self.logger.info(f"任务 {task.name} 检测到变化，已发送通知")
+                    except Exception as e:
+                        self.logger.error(f"发送变化通知失败: {e}")
+
                 
                 # 更新任务状态
                 task.mark_as_checked()
                 if check_result.changed:
                     task.mark_as_changed()
-                
+
+                # 成功执行：重置错误计数
+                if task.error_count > 0:
+                    self.logger.info(f"任务 {task.name} 执行成功，重置错误计数（之前: {task.error_count}）")
+                    task.error_count = 0
+                    task.last_error = None
+                    task.last_error_message = None
+                    task.set_status('active')
+
                 # 保存任务更新
-                self.storage.update_task(task)
+                updates = {
+                    'last_check': task.last_check,
+                    'updated_at': task.updated_at,
+                    'error_count': 0,
+                    'last_error': None,
+                    'last_error_message': None,
+                    'status': 'active'
+                }
+                if check_result.changed:
+                    updates['last_change'] = task.last_change
+                    updates['change_count'] = task.change_count
+
+                self.storage.update_task(task.id, updates)
                 
                 # 记录执行时间
                 execution_time = (datetime.now() - start_time).total_seconds()
@@ -514,15 +586,35 @@ class TaskScheduler:
             else:
                 # 达到最大重试次数，标记为失败
                 task.set_status('error')
-                self.storage.update_task(task)
-                
+                task.error_count = task.error_count + 1 if hasattr(task, 'error_count') else 1
+                task.last_error = datetime.now()
+                task.last_error_message = str(error)
+
+                # 更新任务状态
+                self.storage.update_task(task.id, {
+                    'status': 'error',
+                    'error_count': task.error_count,
+                    'last_error': task.last_error.isoformat(),
+                    'last_error_message': task.last_error_message
+                })
+
+                # 记录详细错误日志
+                self.logger.error(
+                    f"任务 {task.name} (ID: {task.id}) 执行失败\n"
+                    f"  错误次数: {task.error_count}\n"
+                    f"  错误信息: {task.last_error_message}\n"
+                    f"  将在下次检查周期自动重试（使用指数退避策略）"
+                )
+
                 # 发送错误通知
                 await self.notification_service.send_error_notification(
                     task=task,
                     error_message=str(error)
                 )
-                
-                self.logger.error(f"任务 {task.name} 达到最大重试次数，标记为失败状态")
+
+                # 自动重新调度error任务（使用指数退避）
+                retry_interval = self._calculate_error_backoff(task.error_count)
+                await self._schedule_task_with_delay(task, retry_interval)
                 
         except Exception as e:
             self.logger.error(f"处理任务失败时出错: {e}")
