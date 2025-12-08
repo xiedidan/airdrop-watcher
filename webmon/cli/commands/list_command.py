@@ -89,7 +89,14 @@ class ListCommand(Command):
             name = task.get('name', '')
             url = self._truncate_url(task.get('url', ''))
             interval = f"{task.get('interval', 0)}分钟"
-            selector = task.get('selector', '') or '-'
+
+            # 显示选择器（支持多个）
+            selectors = task.get('selectors', [])
+            if selectors:
+                selector = ', '.join(selectors)
+            else:
+                selector = '-'
+
             # 显示真实的 status 字段
             status = task.get('status', 'unknown') or 'unknown'
             enabled = "是" if task.get('enabled', True) else "否"

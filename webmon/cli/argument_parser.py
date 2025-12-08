@@ -5,16 +5,25 @@
 
 import argparse
 import sys
+import os
 from typing import Optional
+from dotenv import load_dotenv
 
 
 class ArgumentParser:
     """
     参数解析器类，封装argparse功能
     """
-    
+
     def __init__(self):
         """初始化参数解析器"""
+        # 加载环境变量
+        load_dotenv()
+
+        # 从环境变量获取默认值
+        self.default_interval = int(os.getenv('DEFAULT_INTERVAL', '300')) // 60  # 转换为分钟
+        self.default_timeout = int(os.getenv('DEFAULT_TIMEOUT', '30000')) // 1000  # 转换为秒
+
         self.parser = argparse.ArgumentParser(
             prog='webmon',
             description='WebMon - 基于Playwright的网页监控工具',
@@ -36,6 +45,7 @@ class ArgumentParser:
         # 添加各个子命令
         self._add_init_command()
         self._add_add_command()
+        self._add_edit_command()
         self._add_remove_command()
         self._add_list_command()
         self._add_start_command()
@@ -126,21 +136,83 @@ class ArgumentParser:
         )
         
         parser_add.add_argument(
-            '--interval', 
+            '--interval',
             '-i',
             type=int,
-            default=60,
-            help='检测间隔时间 (分钟，默认: 60)'
+            default=self.default_interval,
+            help=f'检测间隔时间 (分钟，默认: {self.default_interval})'
         )
-        
+
         parser_add.add_argument(
             '--timeout',
             '-t',
             type=int,
-            default=30,
-            help='页面加载超时时间 (秒，默认: 30)'
+            default=self.default_timeout,
+            help=f'页面加载超时时间 (秒，默认: {self.default_timeout})'
         )
-    
+
+    def _add_edit_command(self):
+        """添加edit命令"""
+        parser_edit = self.subparsers.add_parser(
+            'edit',
+            help='编辑监控任务',
+            description='修改已存在的监控任务配置'
+        )
+
+        parser_edit.add_argument(
+            'task_id',
+            type=str,
+            help='要编辑的任务ID或名称'
+        )
+
+        parser_edit.add_argument(
+            '--name',
+            '-n',
+            type=str,
+            help='修改任务名称'
+        )
+
+        parser_edit.add_argument(
+            '--url',
+            '-u',
+            type=str,
+            help='修改监控URL'
+        )
+
+        parser_edit.add_argument(
+            '--interval',
+            '-i',
+            type=int,
+            help='修改检测间隔时间 (分钟)'
+        )
+
+        parser_edit.add_argument(
+            '--timeout',
+            '-t',
+            type=int,
+            help='修改页面加载超时时间 (秒)'
+        )
+
+        parser_edit.add_argument(
+            '--selector',
+            '-s',
+            type=str,
+            help='修改CSS选择器 (使用空字符串清除)'
+        )
+
+        parser_edit.add_argument(
+            '--enable',
+            type=lambda x: x.lower() in ['true', 'yes', '1', 'on'],
+            help='启用/禁用任务 (true/false)'
+        )
+
+        parser_edit.add_argument(
+            '--force',
+            '-f',
+            action='store_true',
+            help='跳过确认提示'
+        )
+
     def _add_remove_command(self):
         """添加remove命令"""
         parser_remove = self.subparsers.add_parser(

@@ -1,0 +1,217 @@
+"""
+编辑监控任务命令实现
+"""
+
+import json
+from pathlib import Path
+from argparse import Namespace
+from typing import Dict, Any, Optional
+
+from webmon.cli.command import Command
+from webmon.utils.logger import get_logger
+
+
+class EditCommand(Command):
+    """编辑监控任务命令"""
+
+    def __init__(self, args: Namespace):
+        super().__init__(args)
+        self.logger = get_logger(__name__)
+
+    def execute(self) -> bool:
+        """执行编辑任务命令"""
+        try:
+            task_id = self.args.task_id
+            self.logger.info(f"编辑监控任务: {task_id}")
+
+            # 加载任务
+            task = self._load_task(task_id)
+            if not task:
+                print(f"❌ 未找到任务: {task_id}")
+                return False
+
+            print(f"📝 正在编辑任务: {task['name']} (ID: {task['id'][:8]})")
+
+            # 收集要修改的字段
+            updates = self._collect_updates(task)
+
+            if not updates:
+                print("⚠️  没有修改任何字段")
+                return True
+
+            # 显示修改内容
+            print("\n📋 将进行以下修改:")
+            for key, (old_val, new_val) in updates.items():
+                print(f"   {key}: {old_val} → {new_val}")
+
+            # 确认修改
+            if not self.args.force:
+                confirm = input("\n确认修改？[y/N]: ").strip().lower()
+                if confirm not in ['y', 'yes']:
+                    print("❌ 已取消修改")
+                    return False
+
+            # 应用修改
+            if not self._apply_updates(task, updates):
+                return False
+
+            self.logger.info(f"任务修改成功: {task['name']}")
+            print(f"✅ 任务修改成功！")
+
+            # 显示修改后的任务
+            self._show_task_info(task)
+
+            return True
+
+        except Exception as e:
+            self.logger.error(f"编辑任务失败: {e}")
+            print(f"❌ 编辑任务失败: {e}")
+            return False
+
+    def _load_task(self, task_identifier: str) -> Optional[Dict[str, Any]]:
+        """加载任务配置"""
+        try:
+            config_file = Path('config/config.json')
+
+            if not config_file.exists():
+                return None
+
+            with open(config_file, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+
+            tasks = config.get("tasks", [])
+
+            # 按ID或名称查找
+            for task in tasks:
+                if task['id'] == task_identifier or task['id'].startswith(task_identifier):
+                    return task
+                if task['name'] == task_identifier:
+                    return task
+
+            return None
+
+        except Exception as e:
+            self.logger.error(f"加载任务配置失败: {e}")
+            return None
+
+    def _collect_updates(self, task: Dict[str, Any]) -> Dict[str, tuple]:
+        """收集要更新的字段"""
+        updates = {}
+
+        # 名称
+        if self.args.name:
+            updates['name'] = (task['name'], self.args.name)
+
+        # URL
+        if self.args.url:
+            updates['url'] = (task['url'], self.args.url)
+
+        # 间隔
+        if self.args.interval is not None:
+            updates['interval'] = (task['interval'], self.args.interval)
+
+        # 超时
+        if self.args.timeout is not None:
+            updates['timeout'] = (task['timeout'], self.args.timeout)
+
+        # 选择器
+        if self.args.selector is not None:
+            old_selectors = task.get('selectors', [])
+            if self.args.selector:
+                new_selectors = [self.args.selector]
+            else:
+                new_selectors = []
+            updates['selectors'] = (old_selectors, new_selectors)
+
+        # 启用/禁用
+        if self.args.enable is not None:
+            updates['enabled'] = (task.get('enabled', True), self.args.enable)
+
+        return updates
+
+    def _apply_updates(self, task: Dict[str, Any], updates: Dict[str, tuple]) -> bool:
+        """应用修改到配置文件"""
+        try:
+            config_file = Path('config/config.json')
+
+            # 读取配置
+            with open(config_file, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+
+            # 找到任务并更新
+            tasks = config.get("tasks", [])
+            for i, t in enumerate(tasks):
+                if t['id'] == task['id']:
+                    # 应用所有修改
+                    for key, (old_val, new_val) in updates.items():
+                        tasks[i][key] = new_val
+
+                    # 更新时间戳
+                    from datetime import datetime
+                    tasks[i]['updated_at'] = datetime.now().isoformat()
+                    break
+
+            # 保存配置
+            with open(config_file, 'w', encoding='utf-8') as f:
+                json.dump(config, f, indent=2, ensure_ascii=False)
+
+            # 更新本地task对象
+            for key, (old_val, new_val) in updates.items():
+                task[key] = new_val
+
+            return True
+
+        except Exception as e:
+            self.logger.error(f"保存任务配置失败: {e}")
+            print(f"❌ 保存任务配置失败: {e}")
+            return False
+
+    def _show_task_info(self, task: Dict[str, Any]):
+        """显示任务信息"""
+        print(f"\n📊 任务信息:")
+        print(f"   ID: {task['id']}")
+        print(f"   名称: {task['name']}")
+        print(f"   URL: {task['url']}")
+        print(f"   间隔: {task['interval']}分钟")
+        print(f"   超时: {task['timeout']}ms")
+
+        selectors = task.get('selectors', [])
+        if selectors:
+            print(f"   选择器: {', '.join(selectors)}")
+        else:
+            print(f"   选择器: 无")
+
+        print(f"   状态: {'启用' if task.get('enabled', True) else '禁用'}")
+
+    def validate_args(self) -> bool:
+        """验证参数"""
+        if not self.args.task_id:
+            print("❌ 必须提供任务ID或名称")
+            return False
+
+        # 检查是否至少有一个修改项
+        has_changes = any([
+            self.args.name,
+            self.args.url,
+            self.args.interval is not None,
+            self.args.timeout is not None,
+            self.args.selector is not None,
+            self.args.enable is not None
+        ])
+
+        if not has_changes:
+            print("❌ 必须至少指定一个要修改的字段")
+            print("   使用 --help 查看可用选项")
+            return False
+
+        # 验证间隔
+        if self.args.interval is not None and self.args.interval <= 0:
+            print("❌ 检测间隔必须大于0")
+            return False
+
+        # 验证超时
+        if self.args.timeout is not None and self.args.timeout <= 0:
+            print("❌ 超时时间必须大于0")
+            return False
+
+        return True

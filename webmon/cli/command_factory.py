@@ -8,6 +8,7 @@ from argparse import Namespace
 
 from webmon.cli.commands.init_command import InitCommand
 from webmon.cli.commands.add_command import AddCommand
+from webmon.cli.commands.edit_command import EditCommand
 from webmon.cli.commands.list_command import ListCommand
 from webmon.cli.commands.remove_command import RemoveCommand
 from webmon.cli.commands.start_command import StartCommand
@@ -28,6 +29,7 @@ class CommandFactory:
         self._commands: Dict[str, Type[Command]] = {
             'init': InitCommand,
             'add': AddCommand,
+            'edit': EditCommand,
             'list': ListCommand,
             'remove': RemoveCommand,
             'start': StartCommand,
