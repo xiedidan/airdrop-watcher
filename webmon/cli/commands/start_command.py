@@ -158,10 +158,29 @@ class StartCommand(Command):
                 print(f"✅ 任务已启用")
 
             print(f"🎯 正在运行特定任务: {task.name} (ID: {task.id})")
+            print(f"   URL: {task.url}")
 
-            # 直接执行任务（单次）
-            # 这里简化处理，实际可以调用调度器的执行引擎
-            print(f"📋 任务 {task.name} 执行完成")
+            # 实际执行任务
+            try:
+                await self.scheduler._execute_task(task)
+                print(f"✅ 任务 {task.name} 执行完成")
+
+                # 显示执行结果
+                from webmon.storage.task_storage import TaskStorage
+                storage = TaskStorage()
+                updated_task = storage.get_task(task.id)
+                if updated_task:
+                    print(f"\n📊 执行结果:")
+                    print(f"   状态: {updated_task.status}")
+                    print(f"   最后检测: {updated_task.last_check}")
+                    if updated_task.error_count > 0:
+                        print(f"   ⚠️  错误次数: {updated_task.error_count}")
+                        print(f"   错误信息: {updated_task.last_error_message}")
+
+            except Exception as e:
+                self.logger.error(f"执行任务失败: {e}", exc_info=True)
+                print(f"❌ 任务执行失败: {e}")
+                print(f"   请查看日志文件了解详细信息: logs/webmon.log")
 
         except Exception as e:
             self.logger.error(f"运行特定任务失败: {e}")

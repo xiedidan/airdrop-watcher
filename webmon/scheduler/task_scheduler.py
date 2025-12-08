@@ -439,13 +439,13 @@ class TaskScheduler:
             try:
                 # 执行监控任务
                 start_time = datetime.now()
-                
-                # 获取网页内容
-                page_content = await self.browser_engine.get_page_content(
+
+                # 获取网页内容 - 使用资源的browser_engine
+                page_content = await resource.browser_engine.get_page_content(
                     url=task.url,
                     selectors=task.selectors if task.selectors else None
                 )
-                
+
                 if not page_content:
                     raise Exception("无法获取网页内容")
 
