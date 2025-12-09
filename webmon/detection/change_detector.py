@@ -183,30 +183,30 @@ class ChangeDetector:
             self.logger.error(f"变化检测失败 - 任务: {task_id}, 错误: {e}")
             raise DetectionError(f"变化检测失败: {e}", algorithm=algorithm)
     
-    async def _auto_detect_changes(self, old_content: str, new_content: str, 
+    async def _auto_detect_changes(self, old_content: str, new_content: str,
                                  selectors: Optional[List[str]] = None) -> Dict[str, Any]:
         """
         自动选择最佳检测算法
-        
+
         Args:
             old_content: 旧内容
             new_content: 新内容
             selectors: CSS选择器列表
-            
+
         Returns:
             检测结果
         """
         try:
             # 首先进行快速哈希检测
             hash_result = self._hash_detection(old_content, new_content)
-            
+
             # 如果哈希检测发现变化，进行更详细的检测
             if hash_result["changed"] and self.enable_smart_detection:
                 self.logger.debug("哈希检测发现变化，进行详细检测")
-                
+
                 # 根据内容长度和类型选择算法
                 content_length = len(new_content)
-                
+
                 if content_length < 1000:
                     # 短内容：使用相似度检测
                     detailed_result = self._similarity_detection(old_content, new_content)
@@ -216,14 +216,20 @@ class ChangeDetector:
                 else:
                     # 长内容：使用组合检测
                     detailed_result = await self._composite_detection(old_content, new_content, selectors)
-                
+
                 # 合并结果
                 hash_result.update(detailed_result)
                 hash_result["algorithm"] = "auto"
                 hash_result["auto_reason"] = "hash_changed_with_smart_detection"
-            
+            else:
+                # 内容未变化，添加相似度为100%
+                if not hash_result["changed"]:
+                    hash_result["similarity"] = 1.0
+                    hash_result["algorithm"] = "hash"
+                    hash_result["auto_reason"] = "hash_unchanged"
+
             return hash_result
-            
+
         except Exception as e:
             self.logger.error(f"自动检测失败: {e}")
             # 回退到基础哈希检测

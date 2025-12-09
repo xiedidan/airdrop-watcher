@@ -6,6 +6,7 @@
 import asyncio
 import aiohttp
 import logging
+import os
 from typing import Dict, Any, Optional
 from datetime import datetime
 
@@ -321,7 +322,7 @@ class FeishuPlatform(NotificationPlatform):
         try:
             timeout = aiohttp.ClientTimeout(total=30)  # 30秒超时
             
-            async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with aiohttp.ClientSession(timeout=timeout, trust_env=True) as session:
                 headers = {
                     "Content-Type": "application/json; charset=utf-8"
                 }

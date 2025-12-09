@@ -247,9 +247,7 @@ class ExecutionEngine:
             content = await asyncio.wait_for(
                 browser_engine.get_page_content(
                     url=task.url,
-                    selector=task.selectors[0] if task.selectors else None,
-                    timeout=int(timeout * 1000),  # 转换为毫秒
-                    resource=resource
+                    selectors=task.selectors if task.selectors else None
                 ),
                 timeout=timeout
             )
@@ -286,10 +284,10 @@ class ExecutionEngine:
                                history_storage: Any):
         """保存检测结果"""
         try:
-            success = await history_storage.add_check_result(task_id, check_result)
+            success = history_storage.add_check_result(check_result)
             if not success:
                 self.logger.warning(f"保存检测结果失败: {task_id}")
-                
+
         except Exception as e:
             self.logger.error(f"保存检测结果异常: {e}")
     
@@ -327,13 +325,13 @@ class ExecutionEngine:
                                  history_storage: Any):
         """保存变化详情"""
         try:
-            success = await history_storage.add_change_details(task_id, change_details)
+            success = history_storage.add_change_details(change_details)
             if not success:
                 self.logger.warning(f"保存变化详情失败: {task_id}")
-                
+
         except Exception as e:
             self.logger.error(f"保存变化详情异常: {e}")
-    
+
     async def _send_notification(self, task: Task, check_result: CheckResult,
                                change_details: ChangeDetails, notification_service: Any):
         """发送通知"""

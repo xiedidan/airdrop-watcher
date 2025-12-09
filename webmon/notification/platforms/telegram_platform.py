@@ -6,6 +6,7 @@ Telegram Bot推送平台集成
 import asyncio
 import aiohttp
 import logging
+import os
 from typing import Dict, Any, Optional
 from datetime import datetime
 
@@ -215,7 +216,7 @@ class TelegramPlatform(NotificationPlatform):
         try:
             timeout = aiohttp.ClientTimeout(total=30)  # 30秒超时
             
-            async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with aiohttp.ClientSession(timeout=timeout, trust_env=True) as session:
                 async with session.post(url, json=payload) as response:
                     response_data = await response.json()
                     
@@ -389,7 +390,7 @@ class TelegramPlatform(NotificationPlatform):
             
             timeout = aiohttp.ClientTimeout(total=10)
             
-            async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with aiohttp.ClientSession(timeout=timeout, trust_env=True) as session:
                 async with session.get(url) as response:
                     response_data = await response.json()
                     
@@ -427,7 +428,7 @@ class TelegramPlatform(NotificationPlatform):
             
             timeout = aiohttp.ClientTimeout(total=10)
             
-            async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with aiohttp.ClientSession(timeout=timeout, trust_env=True) as session:
                 async with session.post(url, json=payload) as response:
                     response_data = await response.json()
                     

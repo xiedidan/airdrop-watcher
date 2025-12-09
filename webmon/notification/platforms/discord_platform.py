@@ -6,6 +6,7 @@ Discord Webhook推送平台集成
 import asyncio
 import aiohttp
 import logging
+import os
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 
@@ -67,27 +68,38 @@ class DiscordPlatform(NotificationPlatform):
             self.logger.error(f"Discord配置加载失败: {e}")
             self.is_configured = False
     
+    def update_config(self, config: Dict[str, Any]):
+        """
+        更新平台配置
+
+        Args:
+            config: 新配置
+        """
+        self.config.update(config)
+        # 重新加载配置以更新实例变量
+        self._load_config()
+
     def validate_config(self) -> bool:
         """
         验证平台配置
-        
+
         Returns:
             配置是否有效
         """
         if not self.webhook_url:
             return False
-        
+
         if not isinstance(self.webhook_url, str):
             return False
-        
+
         # Discord webhook URL格式验证
         if not self.webhook_url.startswith("https://discord.com/api/webhooks/"):
             return False
-        
+
         # 基本URL长度检查
         if len(self.webhook_url.strip()) < 60:  # Discord webhook URL通常较长
             return False
-        
+
         return True
     
     def get_platform_info(self) -> Dict[str, Any]:
@@ -264,21 +276,28 @@ class DiscordPlatform(NotificationPlatform):
     async def _send_webhook(self, payload: Dict[str, Any]) -> bool:
         """
         发送webhook请求
-        
+
         Args:
             payload: 请求负载
-            
+
         Returns:
             是否发送成功
-            
+
         Raises:
             NotificationError: 请求失败
         """
         try:
             timeout = aiohttp.ClientTimeout(total=30)  # 30秒超时
-            
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.post(self.webhook_url, json=payload) as response:
+
+            # 获取代理配置（从环境变量或配置中获取）
+            proxy = None
+            if os.environ.get('HTTP_PROXY') or os.environ.get('HTTPS_PROXY'):
+                proxy = os.environ.get('HTTPS_PROXY') or os.environ.get('HTTP_PROXY')
+                self.logger.debug(f"使用代理: {proxy}")
+
+            # trust_env=True 让 aiohttp 自动使用系统代理环境变量
+            async with aiohttp.ClientSession(timeout=timeout, trust_env=True) as session:
+                async with session.post(self.webhook_url, json=payload, proxy=proxy) as response:
                     response_text = await response.text()
                     
                     # Discord webhook通常返回204 No Content表示成功

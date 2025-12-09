@@ -18,12 +18,10 @@ pydantic>=2.5.0
 # 日志管理
 loguru>=0.7.0
 
-# 异步编程
-asyncio
+# 终端颜色支持
 colorama>=0.4.6
 
-# 数据处理和比较
-difflib
+# 数据处理
 json5>=0.9.0
 
 # 工具类
@@ -40,3 +38,5 @@ pytest-cov>=4.1.0
 black>=23.0.0
 flake8>=6.0.0
 mypy>=1.7.0
+
+psutil

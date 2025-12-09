@@ -65,13 +65,28 @@ class NotificationService:
         try:
             # 提取平台特定配置（移除enabled字段）
             platform_config = {k: v for k, v in config.items() if k != 'enabled'}
-            
+
+            # 解析环境变量引用
+            resolved_config = {}
+            for key, value in platform_config.items():
+                if isinstance(value, str) and value.startswith('${') and value.endswith('}'):
+                    # 从环境变量获取值
+                    env_key = value[2:-1]  # 移除 ${ 和 }
+                    env_value = self.config_manager.env_config.get(env_key, '')
+                    resolved_config[key] = env_value
+                    if env_value:
+                        self.logger.debug(f"解析环境变量: {key} = {env_key}")
+                    else:
+                        self.logger.warning(f"环境变量 {env_key} 未设置或为空")
+                else:
+                    resolved_config[key] = value
+
             # 更新平台配置
-            platform.update_config(platform_config)
-            
+            platform.update_config(resolved_config)
+
             # 启用平台
             platform.set_enabled(True)
-            
+
         except Exception as e:
             self.logger.error(f"配置平台 {platform.platform_name} 失败: {e}")
             platform.set_enabled(False)
