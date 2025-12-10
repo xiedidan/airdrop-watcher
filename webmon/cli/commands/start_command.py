@@ -67,21 +67,27 @@ class StartCommand(Command):
         try:
             self.logger.info("启动守护进程模式...")
             print("🚀 正在启动监控服务（守护进程模式）...")
-            
-            # 创建PID文件
-            pid_file = self._create_pid_file()
-            if not pid_file:
+
+            # 先检查PID文件是否已存在（不创建）
+            pid_file = Path("webmon.pid")
+            if pid_file.exists():
+                self.logger.warning("PID文件已存在，守护进程可能已在运行")
+                print("⚠️  守护进程可能已在运行，请先执行 stop 命令")
                 return False
-            
-            # 守护进程化
+
+            # 守护进程化（fork之后才创建PID文件）
             self._daemonize()
-            
+
+            # 在守护进程化后创建PID文件（此时已是最终的子进程）
+            if not self._create_pid_file():
+                return False
+
             # 设置信号处理
             self._setup_signal_handlers()
-            
+
             # 运行事件循环
             return asyncio.run(self._run_scheduler(config_manager, specific_task))
-            
+
         except Exception as e:
             self.logger.error(f"守护进程模式启动失败: {e}")
             return False

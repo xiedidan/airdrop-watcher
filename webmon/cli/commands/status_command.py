@@ -271,51 +271,146 @@ class StatusCommand(Command):
     def _get_service_info(self) -> Dict[str, Any]:
         """获取服务状态信息"""
         try:
-            # 检查是否有WebMon进程在运行
-            webmon_processes = []
-            try:
-                import psutil
-                for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'create_time']):
-                    try:
-                        cmdline = proc.info.get('cmdline', [])
-                        if cmdline and any('webmon' in str(arg).lower() for arg in cmdline):
-                            webmon_processes.append({
-                                'pid': proc.info['pid'],
-                                'name': proc.info['name'],
-                                'create_time': datetime.fromtimestamp(proc.info['create_time']).isoformat(),
-                                'cmdline': ' '.join(cmdline)
-                            })
-                    except (psutil.NoSuchProcess, psutil.AccessDenied):
-                        continue
-            except ImportError:
-                # psutil不可用，跳过进程检查
-                pass
-            
-            # 检查日志文件
-            import os
+            # 正确检查守护进程是否在运行
+            # 方法：检查PID文件，验证守护进程是否存在
             from pathlib import Path
+
+            daemon_info = self._check_daemon_process()
+            is_running = daemon_info['is_running']
+            daemon_pid = daemon_info.get('pid')
+
+            # 检查日志文件
             log_file = Path('logs/webmon.log')
             log_info = {
                 'exists': log_file.exists(),
                 'size': log_file.stat().st_size if log_file.exists() else 0,
                 'modified': datetime.fromtimestamp(log_file.stat().st_mtime).isoformat() if log_file.exists() else None
             }
-            
+
             return {
-                'running_processes': webmon_processes,
-                'process_count': len(webmon_processes),
-                'is_running': len(webmon_processes) > 0,
+                'daemon_pid': daemon_pid,
+                'daemon_cmdline': daemon_info.get('cmdline'),
+                'daemon_uptime': daemon_info.get('uptime'),
+                'is_running': is_running,
                 'log_file': log_info,
                 'uptime': self._get_uptime_info()
             }
         except Exception as e:
             self.logger.warning(f"获取服务信息失败: {e}")
             return {
-                'running_processes': [],
-                'process_count': 0,
+                'daemon_pid': None,
                 'is_running': False,
                 'error': str(e)
             }
+
+    def _check_daemon_process(self) -> Dict[str, Any]:
+        """检查守护进程是否在运行"""
+        from pathlib import Path
+
+        pid_file = Path("webmon.pid")
+
+        # 1. 检查PID文件是否存在
+        if not pid_file.exists():
+            return {
+                'is_running': False,
+                'reason': 'PID文件不存在'
+            }
+
+        try:
+            # 2. 读取PID
+            with open(pid_file, 'r') as f:
+                pid = int(f.read().strip())
+
+            # 3. 检查进程是否存在
+            try:
+                import psutil
+                if not psutil.pid_exists(pid):
+                    # PID文件存在但进程不存在，清理PID文件
+                    pid_file.unlink()
+                    return {
+                        'is_running': False,
+                        'reason': f'进程{pid}不存在（已清理过期PID文件）'
+                    }
+
+                # 4. 获取进程信息
+                proc = psutil.Process(pid)
+                cmdline = proc.cmdline()
+
+                # 5. 验证是否是守护进程（命令行包含 "start" 和 "--daemon"）
+                cmdline_str = ' '.join(cmdline)
+                if 'webmon.py' in cmdline_str and 'start' in cmdline_str and ('--daemon' in cmdline_str or '-d' in cmdline_str):
+                    # 计算运行时间
+                    create_time = datetime.fromtimestamp(proc.create_time())
+                    uptime_seconds = (datetime.now() - create_time).total_seconds()
+
+                    return {
+                        'is_running': True,
+                        'pid': pid,
+                        'cmdline': cmdline_str,
+                        'uptime': self._format_uptime_seconds(uptime_seconds),
+                        'uptime_seconds': uptime_seconds
+                    }
+                else:
+                    # PID存在但不是守护进程
+                    return {
+                        'is_running': False,
+                        'reason': f'PID {pid} 不是守护进程（命令: {cmdline_str}）'
+                    }
+
+            except ImportError:
+                # 没有psutil，简单检查PID文件
+                # 尝试发送信号0检查进程是否存在
+                import os
+                import errno
+                try:
+                    os.kill(pid, 0)
+                    # 进程存在
+                    return {
+                        'is_running': True,
+                        'pid': pid,
+                        'cmdline': 'unknown (psutil未安装)',
+                        'note': '安装psutil可获取更多信息: pip install psutil'
+                    }
+                except OSError as e:
+                    if e.errno == errno.ESRCH:
+                        # 进程不存在
+                        pid_file.unlink()
+                        return {
+                            'is_running': False,
+                            'reason': f'进程{pid}不存在（已清理过期PID文件）'
+                        }
+                    else:
+                        # 其他错误（如权限不足）
+                        return {
+                            'is_running': False,
+                            'reason': f'无法检查进程{pid}: {e}'
+                        }
+            except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+                # 进程不存在或访问被拒绝
+                return {
+                    'is_running': False,
+                    'reason': f'进程检查失败: {e}'
+                }
+
+        except (ValueError, FileNotFoundError) as e:
+            # PID文件格式错误或读取失败
+            return {
+                'is_running': False,
+                'reason': f'PID文件读取失败: {e}'
+            }
+
+    def _format_uptime_seconds(self, seconds: float) -> str:
+        """格式化运行时间（秒）"""
+        if seconds < 60:
+            return f"{int(seconds)}秒"
+        elif seconds < 3600:
+            minutes = int(seconds // 60)
+            secs = int(seconds % 60)
+            return f"{minutes}分{secs}秒"
+        else:
+            hours = int(seconds // 3600)
+            minutes = int((seconds % 3600) // 60)
+            return f"{hours}小时{minutes}分钟"
     
     def _get_uptime_info(self) -> Optional[str]:
         """获取运行时间信息"""
@@ -372,12 +467,18 @@ class StatusCommand(Command):
         service_info = status_info['service']
         print(f"🔄 服务状态:")
         if service_info['is_running']:
-            print(f"   ✅ 运行中 (进程数: {service_info['process_count']})")
-            if service_info['uptime']:
-                print(f"   运行时间: {service_info['uptime']}")
+            print(f"   ✅ 运行中")
+            if service_info.get('daemon_pid'):
+                print(f"   守护进程PID: {service_info['daemon_pid']}")
+            if service_info.get('daemon_uptime'):
+                print(f"   运行时间: {service_info['daemon_uptime']}")
+            if service_info.get('daemon_cmdline'):
+                print(f"   命令: {service_info['daemon_cmdline'][:80]}...")
         else:
             print(f"   ❌ 未运行")
-        
+            if service_info.get('reason'):
+                print(f"   原因: {service_info['reason']}")
+
         # 日志文件
         log_info = service_info['log_file']
         if log_info['exists']:
