@@ -300,7 +300,10 @@ class StartCommand(Command):
         """守护进程化"""
         try:
             self.logger.info("正在守护进程化...")
-            
+
+            # 保存当前工作目录
+            original_cwd = os.getcwd()
+
             # 第一次fork
             try:
                 pid = os.fork()
@@ -310,9 +313,8 @@ class StartCommand(Command):
             except OSError as e:
                 self.logger.error(f"第一次fork失败: {e}")
                 raise
-            
+
             # 脱离父进程环境
-            os.chdir("/")
             os.setsid()
             os.umask(0)
             
@@ -325,11 +327,20 @@ class StartCommand(Command):
             except OSError as e:
                 self.logger.error(f"第二次fork失败: {e}")
                 raise
-            
+
+            # 恢复到原始工作目录（而不是切换到根目录）
+            # 这样可以正确访问相对路径的配置文件和日志
+            try:
+                os.chdir(original_cwd)
+                self.logger.info(f"恢复工作目录: {original_cwd}")
+            except Exception as e:
+                self.logger.error(f"恢复工作目录失败: {e}")
+                raise
+
             # 重定向标准文件描述符
             sys.stdout.flush()
             sys.stderr.flush()
-            
+
             # 关闭文件描述符
             try:
                 with open('/dev/null', 'r') as si:
@@ -340,7 +351,7 @@ class StartCommand(Command):
                     os.dup2(se.fileno(), sys.stderr.fileno())
             except Exception as e:
                 self.logger.warning(f"重定向文件描述符失败: {e}")
-            
+
             self.logger.info("守护进程化完成")
             
         except Exception as e:
