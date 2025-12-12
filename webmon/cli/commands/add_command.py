@@ -26,22 +26,24 @@ class AddCommand(Command):
             selector = self.args.selector
             interval = self.args.interval
             timeout = self.args.timeout
-            
+            description = getattr(self.args, 'description', '') or ''
+
             self.logger.info(f"添加监控任务: {url}")
-            
+
             # 验证URL格式
             if not self._validate_url(url):
                 print(f"❌ 无效的URL: {url}")
                 return False
-            
+
             # 生成任务名称
             if not name:
                 name = self._generate_task_name(url)
-            
+
             # 创建任务配置
             task_config = {
                 "id": self._generate_task_id(),
                 "name": name,
+                "description": description,
                 "url": url,
                 "selector": selector,
                 "interval": interval,
@@ -49,19 +51,21 @@ class AddCommand(Command):
                 "enabled": True,
                 "created_at": self._get_current_timestamp()
             }
-            
+
             # 保存任务到配置文件
             if not self._save_task(task_config):
                 return False
-            
+
             self.logger.info(f"任务添加成功: {name}")
             print(f"✅ 任务添加成功！")
             print(f"任务名称: {name}")
             print(f"监控URL: {url}")
-            print(f"检测间隔: {interval}分钟")
+            print(f"检测间隔: {interval}秒")
             if selector:
                 print(f"CSS选择器: {selector}")
-            
+            if description:
+                print(f"任务描述: {description}")
+
             return True
             
         except Exception as e:

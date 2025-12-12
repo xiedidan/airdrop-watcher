@@ -13,6 +13,12 @@
 │  ┌─────────────┐ ┌──────────────┐ ┌────────────────────┐   │
 │  │ Task Manager│ │ChangeDetector│ │NotificationService │   │
 │  └─────────────┘ └──────────────┘ └────────────────────┘   │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │              AIAnalysisService (新增)                │   │
+│  │  - 调用AI模型分析变化内容                             │   │
+│  │  - 提示词模板渲染                                    │   │
+│  │  - 生成自然语言摘要                                  │   │
+│  └─────────────────────────────────────────────────────┘   │
 ├─────────────────────────────────────────────────────────────┤
 │                    Browser Engine                           │
 │                    (Playwright)                            │
@@ -51,6 +57,18 @@
 - **职责**: 网页内容获取
 - **功能**: JS渲染、动态等待、反检测
 - **配置**: 无头模式、超时、重试
+
+#### 1.2.6 AI分析服务 (AIAnalysisService) - 新增
+- **职责**: 智能分析网页变化内容
+- **功能**:
+  - 调用AI模型（DeepSeek R1 / OpenAI兼容API）
+  - 提示词模板渲染（占位符替换）
+  - 生成自然语言变化摘要
+- **配置**:
+  - API URL、API Key、模型名称
+  - 最大token数、温度参数、超时时间
+  - 系统提示词、用户提示词模板
+- **降级策略**: AI调用失败时使用原始变化内容
 
 ## 2. 详细设计
 
@@ -150,17 +168,65 @@ class BrowserEngine:
         self.config_manager = config_manager
         self.playwright = None
         self.browser = None
-    
+
     async def get_page_content(self, url, selectors=None):
         """获取页面内容"""
         pass
-    
+
     async def setup_browser(self):
         """设置浏览器"""
         pass
-    
+
     async def close_browser(self):
         """关闭浏览器"""
+        pass
+
+# AI分析服务 - 新增
+class AIAnalysisService:
+    """AI智能分析服务"""
+    def __init__(self, config_manager):
+        self.config_manager = config_manager
+        self.ai_config = None
+        self.http_client = None
+
+    def load_config(self):
+        """加载AI配置"""
+        pass
+
+    def render_prompt(self, template: str, context: dict) -> str:
+        """渲染提示词模板，替换占位符
+
+        支持的占位符:
+        - {task_name}: 任务名称
+        - {url}: 监控URL
+        - {description}: 任务描述
+        - {changes}: 变动内容
+        - {old_content}: 旧内容摘要
+        - {new_content}: 新内容摘要
+        """
+        pass
+
+    async def analyze_changes(self, task: Task, changes: dict) -> AIAnalysisResult:
+        """分析变化内容
+
+        Args:
+            task: 监控任务
+            changes: 变化详情字典
+
+        Returns:
+            AIAnalysisResult: 分析结果
+        """
+        pass
+
+    async def call_ai_api(self, system_prompt: str, user_prompt: str) -> str:
+        """调用AI API
+
+        支持OpenAI兼容API (DeepSeek, OpenAI, Claude等)
+        """
+        pass
+
+    def get_fallback_summary(self, changes: dict) -> str:
+        """获取降级摘要（AI调用失败时使用）"""
         pass
 ```
 
@@ -173,6 +239,7 @@ class Task:
     id: str                    # 任务唯一ID
     url: str                   # 监控URL
     name: str                  # 任务名称
+    description: str           # 任务描述（用于AI分析上下文）- 新增
     selectors: List[str]       # CSS选择器列表
     interval: int              # 检测间隔（秒）
     timeout: int               # 超时时间（毫秒）
@@ -226,6 +293,36 @@ class Notification:
     timestamp: datetime        # 时间戳
     urgency: str               # 紧急程度
     platforms: List[str]       # 目标平台
+    ai_summary: str            # AI分析摘要（新增）
+```
+
+#### 2.2.5 AI分析结果模型 (AIAnalysisResult) - 新增
+```python
+@dataclass
+class AIAnalysisResult:
+    task_id: str               # 任务ID
+    success: bool              # 分析是否成功
+    summary: str               # AI生成的摘要
+    model: str                 # 使用的模型
+    tokens_used: int           # 消耗的token数
+    latency: float             # 响应延迟（秒）
+    timestamp: datetime        # 分析时间
+    error_message: str         # 错误信息（如果失败）
+```
+
+#### 2.2.6 AI配置模型 (AIConfig) - 新增
+```python
+@dataclass
+class AIConfig:
+    enabled: bool              # 是否启用AI分析
+    api_url: str               # API端点URL
+    api_key: str               # API密钥
+    model: str                 # 模型名称（如 deepseek-reasoner）
+    max_tokens: int            # 最大生成token数
+    temperature: float         # 温度参数（0.0-1.0）
+    timeout: int               # 请求超时时间（秒）
+    system_prompt: str         # 系统提示词
+    user_prompt_template: str  # 用户提示词模板
 ```
 
 ### 2.3 配置设计
@@ -242,6 +339,15 @@ TELEGRAM_BOT_TOKEN=                # Telegram Bot令牌
 TELEGRAM_CHAT_ID=                  # Telegram聊天ID
 DISCORD_WEBHOOK_URL=               # Discord Webhook URL
 FEISHU_WEBHOOK_URL=                # 飞书Webhook URL
+
+# AI分析配置（新增）
+AI_API_URL=https://api.deepseek.com/v1    # AI API端点URL
+AI_API_KEY=                               # AI API密钥
+AI_MODEL=deepseek-reasoner                # 模型名称
+AI_MAX_TOKENS=2048                        # 最大生成token数
+AI_TEMPERATURE=0.7                        # 温度参数
+AI_TIMEOUT=60                             # 请求超时时间（秒）
+AI_ENABLED=true                           # 是否启用AI分析
 
 # 监控配置
 DEFAULT_INTERVAL=300               # 默认检测间隔（秒）
@@ -273,7 +379,7 @@ CUSTOM_USER_AGENT=                 # 自定义User-Agent
   "version": "1.0.0",
   "created_at": "2024-01-01T00:00:00Z",
   "updated_at": "2024-01-01T00:00:00Z",
-  
+
   "monitoring": {
     "default_interval": 300,
     "default_timeout": 30000,
@@ -285,7 +391,7 @@ CUSTOM_USER_AGENT=                 # 自定义User-Agent
       "retry_delay": 60
     }
   },
-  
+
   "detection": {
     "enable_smart_detection": true,
     "similarity_threshold": 0.85,
@@ -304,12 +410,24 @@ CUSTOM_USER_AGENT=                 # 自定义User-Agent
       "images": "img[src]"
     }
   },
-  
+
+  "ai": {
+    "enabled": true,
+    "api_url": "${AI_API_URL}",
+    "api_key": "${AI_API_KEY}",
+    "model": "deepseek-reasoner",
+    "max_tokens": 2048,
+    "temperature": 0.7,
+    "timeout": 60,
+    "system_prompt": "你是一个专业的网页内容变化分析助手。你的任务是：\n1. 分析网页内容的变化\n2. 提取用户可能关注的关键信息\n3. 用简洁的自然语言总结变化要点\n4. 如果变化涉及价格、时间、状态等重要信息，请特别指出\n\n请用中文回复，保持简洁（不超过200字），重点突出关键变化。",
+    "user_prompt_template": "## 监控任务信息\n- 任务名称：{task_name}\n- 监控URL：{url}\n- 任务描述：{description}\n\n## 检测到的变化内容\n{changes}\n\n请分析以上变化，提取关键信息并生成简洁的摘要。"
+  },
+
   "notification": {
     "platforms": ["pushplus"],
     "template": {
       "title": "🎯 网页变化检测通知",
-      "content": "📍 URL: {url}\n⏰ 时间: {timestamp}\n📝 变化: {summary}\n🔗 查看: {url}",
+      "content": "📍 URL: {url}\n⏰ 时间: {timestamp}\n📝 变化: {summary}\n\n🤖 AI分析：\n{ai_summary}\n\n🔗 查看: {url}",
       "rate_limit": 60
     },
     "platform_configs": {
@@ -332,9 +450,19 @@ CUSTOM_USER_AGENT=                 # 自定义User-Agent
       }
     }
   },
-  
-  "tasks": [],
-  
+
+  "tasks": [
+    {
+      "id": "example_task",
+      "url": "https://example.com",
+      "name": "示例任务",
+      "description": "监控示例网站，关注价格变化和重要公告",
+      "selectors": [".content"],
+      "interval": 300,
+      "enabled": true
+    }
+  ],
+
   "storage": {
     "history_file": "data/history.json",
     "max_history_entries": 1000,
@@ -451,6 +579,116 @@ class ContentExtractionAlgorithm:
         return links
 ```
 
+#### 2.4.3 AI分析算法 - 新增
+```python
+class AIAnalysisAlgorithm:
+    """AI智能分析算法"""
+
+    def __init__(self, config: AIConfig):
+        self.config = config
+        self.http_client = httpx.AsyncClient(timeout=config.timeout)
+
+    def render_user_prompt(self, task: Task, changes: dict) -> str:
+        """渲染用户提示词模板
+
+        支持的占位符:
+        - {task_name}: 任务名称
+        - {url}: 监控URL
+        - {description}: 任务描述
+        - {changes}: 变动内容（格式化后的字符串）
+        - {old_content}: 旧内容摘要
+        - {new_content}: 新内容摘要
+        """
+        # 格式化变化内容
+        changes_text = self._format_changes(changes)
+
+        # 替换占位符
+        prompt = self.config.user_prompt_template
+        prompt = prompt.replace('{task_name}', task.name)
+        prompt = prompt.replace('{url}', task.url)
+        prompt = prompt.replace('{description}', task.description or '无')
+        prompt = prompt.replace('{changes}', changes_text)
+        prompt = prompt.replace('{old_content}', changes.get('old_content', ''))
+        prompt = prompt.replace('{new_content}', changes.get('new_content', ''))
+
+        return prompt
+
+    def _format_changes(self, changes: dict) -> str:
+        """格式化变化内容为可读文本"""
+        if not changes:
+            return "无明显变化"
+
+        lines = []
+        for key, value in changes.items():
+            if isinstance(value, dict) and 'old' in value and 'new' in value:
+                lines.append(f"- {key}: {value['old']} → {value['new']}")
+            else:
+                lines.append(f"- {key}: {value}")
+
+        return '\n'.join(lines)
+
+    async def call_openai_compatible_api(
+        self,
+        system_prompt: str,
+        user_prompt: str
+    ) -> AIAnalysisResult:
+        """调用OpenAI兼容API
+
+        支持: DeepSeek, OpenAI, Azure OpenAI, 通义千问等
+        """
+        start_time = time.time()
+
+        try:
+            response = await self.http_client.post(
+                f"{self.config.api_url}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self.config.api_key}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": self.config.model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    "max_tokens": self.config.max_tokens,
+                    "temperature": self.config.temperature
+                }
+            )
+
+            response.raise_for_status()
+            data = response.json()
+
+            return AIAnalysisResult(
+                success=True,
+                summary=data['choices'][0]['message']['content'],
+                model=self.config.model,
+                tokens_used=data.get('usage', {}).get('total_tokens', 0),
+                latency=time.time() - start_time,
+                timestamp=datetime.now(),
+                error_message=None
+            )
+
+        except Exception as e:
+            return AIAnalysisResult(
+                success=False,
+                summary=self.get_fallback_summary(changes),
+                model=self.config.model,
+                tokens_used=0,
+                latency=time.time() - start_time,
+                timestamp=datetime.now(),
+                error_message=str(e)
+            )
+
+    def get_fallback_summary(self, changes: dict) -> str:
+        """获取降级摘要（AI调用失败时使用）"""
+        if not changes:
+            return "检测到页面变化，但无法获取详细信息。"
+
+        change_count = len(changes)
+        return f"检测到 {change_count} 处变化。（AI分析暂时不可用）"
+```
+
 ### 2.5 异常处理设计
 
 #### 2.5.1 异常分类
@@ -481,6 +719,22 @@ class NotificationError(WebMonException):
 
 class StorageError(WebMonException):
     """存储错误"""
+    pass
+
+class AIAnalysisError(WebMonException):
+    """AI分析错误 - 新增"""
+    pass
+
+class AIConfigError(AIAnalysisError):
+    """AI配置错误 - 新增"""
+    pass
+
+class AIAPIError(AIAnalysisError):
+    """AI API调用错误 - 新增"""
+    pass
+
+class AITimeoutError(AIAnalysisError):
+    """AI请求超时错误 - 新增"""
     pass
 ```
 

@@ -88,7 +88,7 @@ class ListCommand(Command):
             task_id = task.get('id', '')[:8]
             name = task.get('name', '')
             url = self._truncate_url(task.get('url', ''))
-            interval = f"{task.get('interval', 0)}分钟"
+            interval = f"{task.get('interval', 0)}秒"
 
             # 显示选择器（支持多个）
             selectors = task.get('selectors', [])
@@ -141,19 +141,20 @@ class ListCommand(Command):
         """以CSV格式输出"""
         import csv
         import io
-        
+
         output = io.StringIO()
         writer = csv.writer(output)
-        
+
         # 写入表头
-        headers = ['ID', '名称', 'URL', '间隔(分钟)', '选择器', '状态', '创建时间']
+        headers = ['ID', '名称', '描述', 'URL', '间隔(秒)', '选择器', '状态', '创建时间']
         writer.writerow(headers)
-        
+
         # 写入数据
         for task in tasks:
             writer.writerow([
                 task.get('id', ''),
                 task.get('name', ''),
+                task.get('description', ''),
                 task.get('url', ''),
                 task.get('interval', 0),
                 task.get('selector', '') or '',

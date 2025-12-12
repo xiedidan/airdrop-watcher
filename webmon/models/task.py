@@ -10,11 +10,12 @@ import uuid
 @dataclass
 class Task:
     """监控任务数据模型"""
-    
+
     # 基础信息
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     url: str = ""
     name: str = ""
+    description: str = ""  # 任务描述（用于AI分析上下文）
     selectors: List[str] = field(default_factory=list)
     
     # 监控配置
@@ -51,8 +52,9 @@ class Task:
             'id': self.id,
             'url': self.url,
             'name': self.name,
+            'description': self.description,
             'selectors': self.selectors,
-            'interval': self.interval,
+            'interval': self.interval,  # 秒
             'timeout': self.timeout,
             'enabled': self.enabled,
             'created_at': self.created_at.isoformat() if self.created_at else None,
@@ -83,14 +85,10 @@ class Task:
                 data['selectors'] = [selector]
             else:
                 data['selectors'] = []
-        
-        # 处理单位转换（分钟->秒，秒->毫秒）
-        if 'interval' in data and data['interval'] < 60:
-            # 假设小于60的值是分钟，需要转换为秒
-            data['interval'] = data['interval'] * 60
-        
+
+        # 不做单位转换，interval 统一为秒，timeout 统一为毫秒
+        # 如果 timeout < 1000，假设是秒，转换为毫秒（兼容旧配置）
         if 'timeout' in data and data['timeout'] < 1000:
-            # 假设小于1000的值是秒，需要转换为毫秒
             data['timeout'] = data['timeout'] * 1000
         
         return cls(**data)
@@ -127,6 +125,7 @@ class Task:
         return {
             'id': self.id,
             'name': self.name,
+            'description': self.description,
             'url': self.url,
             'enabled': self.enabled,
             'status': self.status,

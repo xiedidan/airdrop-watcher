@@ -102,6 +102,11 @@ class EditCommand(Command):
         if self.args.name:
             updates['name'] = (task['name'], self.args.name)
 
+        # 描述
+        if self.args.description is not None:
+            old_desc = task.get('description', '')
+            updates['description'] = (old_desc, self.args.description)
+
         # URL
         if self.args.url:
             updates['url'] = (task['url'], self.args.url)
@@ -171,8 +176,10 @@ class EditCommand(Command):
         print(f"\n📊 任务信息:")
         print(f"   ID: {task['id']}")
         print(f"   名称: {task['name']}")
+        if task.get('description'):
+            print(f"   描述: {task['description']}")
         print(f"   URL: {task['url']}")
-        print(f"   间隔: {task['interval']}分钟")
+        print(f"   间隔: {task['interval']}秒")
         print(f"   超时: {task['timeout']}ms")
 
         selectors = task.get('selectors', [])
@@ -192,6 +199,7 @@ class EditCommand(Command):
         # 检查是否至少有一个修改项
         has_changes = any([
             self.args.name,
+            getattr(self.args, 'description', None) is not None,
             self.args.url,
             self.args.interval is not None,
             self.args.timeout is not None,

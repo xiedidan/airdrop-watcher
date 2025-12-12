@@ -30,7 +30,22 @@ WebMon是一个基于Playwright的轻量级网页监控工具，通过命令行�
 - ✅ 支持结构化内容提取（标题、链接、文本等）
 - ✅ 支持变化历史记录
 
-#### 3.1.3 通知推送
+#### 3.1.3 AI智能分析（新增）
+- ⚠️ 支持AI模型分析变化内容
+- ⚠️ 支持DeepSeek R1模型（推荐）
+- ⚠️ 支持OpenAI兼容API（如OpenAI、Claude、通义千问等）
+- ⚠️ 系统提示词：所有任务通用，定义AI角色和输出格式
+- ⚠️ 用户提示词模板：支持占位符替换
+  - `{task_name}` - 任务名称
+  - `{url}` - 监控URL
+  - `{description}` - 任务描述
+  - `{changes}` - 变动内容
+  - `{old_content}` - 旧内容摘要
+  - `{new_content}` - 新内容摘要
+- ⚠️ 将AI分析结果加入推送消息
+- ⚠️ 支持分析失败降级（失败时使用原始变化内容）
+
+#### 3.1.4 通知推送
 - ✅ 支持多平台同时推送
 - ✅ 支持PushPlus（微信推送）
 - ✅ 支持Telegram Bot推送
@@ -68,12 +83,13 @@ webmon init [--force]
 
 ##### add命令
 ```bash
-webmon add <url> [--name <name>] [--selector <selector>] [--interval <seconds>]
+webmon add <url> [--name <name>] [--selector <selector>] [--interval <seconds>] [--description <description>]
 ```
 - 添加新的监控任务
 - 支持自定义任务名称
 - 支持CSS选择器精准监控
 - 支持自定义检测间隔
+- 支持任务描述（用于AI分析时的上下文）
 
 ##### list命令
 ```bash
@@ -101,6 +117,15 @@ TELEGRAM_CHAT_ID=your_telegram_chat_id
 DISCORD_WEBHOOK_URL=your_discord_webhook_url
 FEISHU_WEBHOOK_URL=your_feishu_webhook_url
 
+# AI分析配置（新增）
+AI_API_URL=https://api.deepseek.com/v1
+AI_API_KEY=your_deepseek_api_key
+AI_MODEL=deepseek-reasoner
+AI_MAX_TOKENS=2048
+AI_TEMPERATURE=0.7
+AI_TIMEOUT=60
+AI_ENABLED=true
+
 # 监控配置
 DEFAULT_INTERVAL=300
 DEFAULT_TIMEOUT=30000
@@ -127,12 +152,33 @@ BROWSER_HEADLESS=true
     "similarity_threshold": 0.85,
     "ignore_selectors": [".advertisement", ".cookie-banner"]
   },
+  "ai": {
+    "enabled": true,
+    "api_url": "${AI_API_URL}",
+    "api_key": "${AI_API_KEY}",
+    "model": "deepseek-reasoner",
+    "max_tokens": 2048,
+    "temperature": 0.7,
+    "timeout": 60,
+    "system_prompt": "你是一个专业的网页内容分析助手。你的任务是分析网页变化内容，提取用户关注的关键信息，并用简洁的自然语言总结变化要点。",
+    "user_prompt_template": "任务名称：{task_name}\n监控URL：{url}\n任务描述：{description}\n\n变动内容：\n{changes}\n\n请分析以上变动，提取关键更新信息，用简洁的语言总结主要变化。"
+  },
   "notification": {
     "platforms": ["pushplus"],
-    "template": "🎯 {title}\n📍 {url}\n⏰ {timestamp}\n📝 {changes}",
+    "template": "🎯 {title}\n📍 {url}\n⏰ {timestamp}\n📝 {changes}\n\n🤖 AI分析：\n{ai_summary}",
     "rate_limit": 60
   },
-  "tasks": []
+  "tasks": [
+    {
+      "id": "task_001",
+      "url": "https://example.com",
+      "name": "示例任务",
+      "description": "监控示例网站的更新，关注价格变化和新公告",
+      "selectors": [".content"],
+      "interval": 300,
+      "enabled": true
+    }
+  ]
 }
 ```
 

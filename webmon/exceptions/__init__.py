@@ -163,7 +163,7 @@ class ResourceError(WebMonException):
 
 class ConcurrentError(WebMonException):
     """并发错误"""
-    
+
     def __init__(self, message: str, max_concurrent: int = None, current: int = None, details: dict = None):
         error_details = details or {}
         if max_concurrent:
@@ -171,6 +171,53 @@ class ConcurrentError(WebMonException):
         if current:
             error_details['current'] = current
         super().__init__(message, "CONCURRENT_ERROR", error_details)
+
+
+class AIAnalysisError(WebMonException):
+    """AI分析错误基类"""
+
+    def __init__(self, message: str, model: str = None, task_id: str = None, details: dict = None):
+        error_details = details or {}
+        if model:
+            error_details['model'] = model
+        if task_id:
+            error_details['task_id'] = task_id
+        super().__init__(message, "AI_ERROR", error_details)
+
+
+class AIConfigError(AIAnalysisError):
+    """AI配置错误"""
+
+    def __init__(self, message: str, config_key: str = None, details: dict = None):
+        error_details = details or {}
+        if config_key:
+            error_details['config_key'] = config_key
+        super().__init__(message, details=error_details)
+        self.error_code = "AI_CONFIG_ERROR"
+
+
+class AIAPIError(AIAnalysisError):
+    """AI API调用错误"""
+
+    def __init__(self, message: str, status_code: int = None, api_url: str = None, details: dict = None):
+        error_details = details or {}
+        if status_code:
+            error_details['status_code'] = status_code
+        if api_url:
+            error_details['api_url'] = api_url
+        super().__init__(message, details=error_details)
+        self.error_code = "AI_API_ERROR"
+
+
+class AITimeoutError(AIAnalysisError):
+    """AI请求超时错误"""
+
+    def __init__(self, message: str, timeout: int = None, details: dict = None):
+        error_details = details or {}
+        if timeout:
+            error_details['timeout'] = timeout
+        super().__init__(message, details=error_details)
+        self.error_code = "AI_TIMEOUT_ERROR"
 
 
 def handle_exception(exception: Exception, context: str = None) -> dict:
@@ -216,6 +263,8 @@ def handle_exception(exception: Exception, context: str = None) -> dict:
         error_info['suggestion'] = "请检查系统资源是否充足"
     elif isinstance(exception, ConcurrentError):
         error_info['suggestion'] = "请等待其他任务完成或调整并发设置"
+    elif isinstance(exception, AIAnalysisError):
+        error_info['suggestion'] = "请检查AI配置（API Key、API URL等）是否正确"
     else:
         error_info['suggestion'] = "请查看详细错误信息并尝试解决"
     
@@ -225,7 +274,7 @@ def handle_exception(exception: Exception, context: str = None) -> dict:
 __all__ = [
     'WebMonException',
     'ConfigurationError',
-    'NetworkError', 
+    'NetworkError',
     'BrowserError',
     'DetectionError',
     'NotificationError',
@@ -236,5 +285,9 @@ __all__ = [
     'AuthenticationError',
     'ResourceError',
     'ConcurrentError',
+    'AIAnalysisError',
+    'AIConfigError',
+    'AIAPIError',
+    'AITimeoutError',
     'handle_exception'
 ]

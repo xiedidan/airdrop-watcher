@@ -20,8 +20,8 @@ class ArgumentParser:
         # 加载环境变量
         load_dotenv()
 
-        # 从环境变量获取默认值
-        self.default_interval = int(os.getenv('DEFAULT_INTERVAL', '300')) // 60  # 转换为分钟
+        # 从环境变量获取默认值（单位：秒）
+        self.default_interval = int(os.getenv('DEFAULT_INTERVAL', '300'))  # 秒
         self.default_timeout = int(os.getenv('DEFAULT_TIMEOUT', '30000')) // 1000  # 转换为秒
 
         self.parser = argparse.ArgumentParser(
@@ -114,33 +114,41 @@ class ArgumentParser:
             help='添加监控任务',
             description='添加一个新的网页监控任务'
         )
-        
+
         parser_add.add_argument(
             'url',
             type=str,
             help='要监控的网页URL'
         )
-        
+
         parser_add.add_argument(
-            '--name', 
+            '--name',
             '-n',
             type=str,
             help='任务名称 (可选，默认为URL的简化名称)'
         )
-        
+
         parser_add.add_argument(
-            '--selector', 
+            '--description',
+            '-d',
+            type=str,
+            default='',
+            help='任务描述，用于AI分析时的上下文 (可选)'
+        )
+
+        parser_add.add_argument(
+            '--selector',
             '-s',
             type=str,
             help='CSS选择器，用于指定监控的页面元素 (可选)'
         )
-        
+
         parser_add.add_argument(
             '--interval',
             '-i',
             type=int,
             default=self.default_interval,
-            help=f'检测间隔时间 (分钟，默认: {self.default_interval})'
+            help=f'检测间隔时间 (秒，默认: {self.default_interval})'
         )
 
         parser_add.add_argument(
@@ -173,6 +181,13 @@ class ArgumentParser:
         )
 
         parser_edit.add_argument(
+            '--description',
+            '-d',
+            type=str,
+            help='修改任务描述'
+        )
+
+        parser_edit.add_argument(
             '--url',
             '-u',
             type=str,
@@ -183,7 +198,7 @@ class ArgumentParser:
             '--interval',
             '-i',
             type=int,
-            help='修改检测间隔时间 (分钟)'
+            help='修改检测间隔时间 (秒)'
         )
 
         parser_edit.add_argument(
