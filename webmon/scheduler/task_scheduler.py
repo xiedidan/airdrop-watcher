@@ -292,6 +292,12 @@ class TaskScheduler:
     async def _schedule_task(self, task: Task, immediate: bool = False):
         """调度单个任务"""
         try:
+            # 从存储重新加载任务状态，检查是否被禁用
+            latest_task = self.storage.get_task(task.id)
+            if latest_task and not latest_task.enabled:
+                self.logger.info(f"任务 {task.name} (ID: {task.id}) 已被禁用，跳过调度")
+                return
+
             # 计算下次执行时间
             now = datetime.now()
             if immediate:
@@ -302,11 +308,11 @@ class TaskScheduler:
             else:
                 # 新任务，立即执行
                 next_run = now
-            
+
             # 如果下次运行时间已过，立即执行
             if next_run <= now:
                 next_run = now
-            
+
             # 添加到调度队列
             job = {
                 'task': task,
@@ -314,18 +320,24 @@ class TaskScheduler:
                 'priority': self.priority_manager.calculate_priority(task),
                 'retry_count': 0
             }
-            
+
             await self.job_queue.put(job)
-            
+
             self.task_next_run[task.id] = next_run
             self.logger.debug(f"任务 {task.name} (ID: {task.id}) 已调度，下次运行: {next_run}")
-            
+
         except Exception as e:
             self.logger.error(f"调度任务 {task.name} 失败: {e}")
 
     async def _schedule_task_with_delay(self, task: Task, delay_seconds: int):
         """延迟调度任务（用于错误恢复）"""
         try:
+            # 从存储重新加载任务状态，检查是否被禁用
+            latest_task = self.storage.get_task(task.id)
+            if latest_task and not latest_task.enabled:
+                self.logger.info(f"任务 {task.name} (ID: {task.id}) 已被禁用，跳过错误恢复调度")
+                return
+
             next_run = datetime.now() + timedelta(seconds=delay_seconds)
 
             job = {
