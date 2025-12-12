@@ -22,6 +22,7 @@ from webmon.browser.resource_manager import ResourceManager
 from webmon.browser.browser_engine import BrowserEngine
 from webmon.detection.change_detector import ChangeDetector
 from webmon.notification.service import NotificationService
+from webmon.utils.content_diff import ContentDiff
 from .job_queue import JobQueue
 from .execution_engine import ExecutionEngine
 from .priority_manager import PriorityManager
@@ -91,6 +92,9 @@ class TaskScheduler:
 
         # 变化检测器
         self.change_detector = ChangeDetector(self.config_manager)
+
+        # 内容差异对比工具
+        self.content_diff = ContentDiff(max_diff_lines=50, context_lines=3)
 
         # 通知服务
         self.notification_service = NotificationService(self.config_manager)
@@ -425,6 +429,7 @@ class TaskScheduler:
         """执行单个任务"""
         try:
             self.stats['total_executions'] += 1
+            self.logger.info("-" * 60)
             self.logger.info(f"开始执行任务: {task.name} (ID: {task.id})")
             
             # 获取浏览器资源
@@ -472,6 +477,24 @@ class TaskScheduler:
                     timestamp=check_result_dict.get('timestamp', datetime.now())
                 )
 
+                # 如果检测到变化，计算详细差异
+                if check_result.changed and old_content:
+                    try:
+                        new_content = page_content.get('content', '') if isinstance(page_content, dict) else str(page_content)
+                        diff_result = self.content_diff.compute_diff(old_content, new_content)
+
+                        # 保存差异信息到CheckResult
+                        check_result.mark_as_changed(
+                            change_type=check_result.change_type,
+                            diff_result=diff_result
+                        )
+
+                        self.logger.info(f"计算内容差异完成 - 任务: {task.name}, "
+                                       f"新增: {diff_result.get('added_lines', 0)}行, "
+                                       f"删除: {diff_result.get('removed_lines', 0)}行")
+                    except Exception as e:
+                        self.logger.warning(f"计算内容差异失败: {e}")
+
                 # 保存内容预览（用于下次对比）
                 new_content = page_content.get('content', '') if isinstance(page_content, dict) else str(page_content)
                 check_result.set_content(new_content, calculate_hash=False)  # hash已经计算过了
@@ -483,7 +506,21 @@ class TaskScheduler:
                 if check_result.changed:
                     self.stats['total_changes'] += 1
 
-                    # 简化通知：直接使用基本信息发送通知，跳过获取详细变化
+                    # 准备变化摘要
+                    if check_result.changes_summary:
+                        change_summary = check_result.changes_summary
+                    else:
+                        change_summary = f"检测到内容变化 - {check_result.change_type}"
+
+                    # 如果有详细变化信息，添加到摘要中
+                    if check_result.change_details:
+                        key_changes = self.content_diff.extract_key_changes(
+                            {'change_details': check_result.change_details},
+                            max_items=3
+                        )
+                        if key_changes:
+                            change_summary += "\n\n主要变化:\n" + "\n".join(key_changes)
+
                     self.logger.info(f"检测到变化 - 任务: {task.name}, URL: {task.url}")
 
                     # 发送通知
@@ -491,7 +528,7 @@ class TaskScheduler:
                         await self.notification_service.send_change_notification(
                             task_name=task.name,
                             url=task.url,
-                            change_summary=f"检测到内容变化 - {check_result.change_type}"
+                            change_summary=change_summary
                         )
                         self.logger.info(f"任务 {task.name} 检测到变化，已发送通知")
                     except Exception as e:
@@ -556,7 +593,46 @@ class TaskScheduler:
                     await self._schedule_task(task)
                 except Exception as e:
                     self.logger.error(f"重新调度任务 {task.name} 失败: {e}")
-    
+
+    def _should_send_error_notification(self, task: Task) -> bool:
+        """
+        判断是否应该发送错误通知
+
+        规则：
+        1. 第1次错误 - 发送
+        2. 之后每10次错误 - 发送
+        3. 或者距离上次通知超过10分钟 - 发送
+
+        Args:
+            task: 任务对象
+
+        Returns:
+            是否应该发送通知
+        """
+        error_count = getattr(task, 'error_count', 1)
+        last_notification = getattr(task, 'last_error_notification', None)
+
+        # 第1次错误，发送通知
+        if error_count == 1:
+            self.logger.debug(f"任务 {task.name} 第1次错误，发送通知")
+            return True
+
+        # 每10次错误发送一次
+        if error_count % 10 == 0:
+            self.logger.debug(f"任务 {task.name} 第{error_count}次错误（每10次），发送通知")
+            return True
+
+        # 距离上次通知超过10分钟
+        if last_notification:
+            time_since_last = datetime.now() - last_notification
+            if time_since_last > timedelta(minutes=10):
+                self.logger.debug(f"任务 {task.name} 距上次通知已过{time_since_last}，发送通知")
+                return True
+
+        # 不满足条件，不发送
+        self.logger.debug(f"任务 {task.name} 第{error_count}次错误，跳过通知（上次: {last_notification}）")
+        return False
+
     async def _handle_task_failure(self, task: Task, error: Exception):
         """处理任务失败"""
         try:
@@ -606,11 +682,19 @@ class TaskScheduler:
                     f"  将在下次检查周期自动重试（使用指数退避策略）"
                 )
 
-                # 发送错误通知
-                await self.notification_service.send_error_notification(
-                    task=task,
-                    error_message=str(error)
-                )
+                # 发送错误通知（带频率控制）
+                if self._should_send_error_notification(task):
+                    await self.notification_service.send_error_notification(
+                        task=task,
+                        error_message=str(error)
+                    )
+                    # 更新错误通知跟踪字段
+                    task.last_error_notification = datetime.now()
+                    task.error_notification_count = getattr(task, 'error_notification_count', 0) + 1
+                    self.storage.update_task(task.id, {
+                        'last_error_notification': task.last_error_notification.isoformat(),
+                        'error_notification_count': task.error_notification_count
+                    })
 
                 # 自动重新调度error任务（使用指数退避）
                 retry_interval = self._calculate_error_backoff(task.error_count)

@@ -37,6 +37,8 @@ class Task:
     error_count: int = 0  # 连续错误次数
     last_error: Optional[datetime] = None  # 最后一次错误时间
     last_error_message: Optional[str] = None  # 最后一次错误信息
+    last_error_notification: Optional[datetime] = None  # 最后一次错误通知时间
+    error_notification_count: int = 0  # 已发送的错误通知次数
 
     # 扩展字段
     metadata: Dict[str, Any] = field(default_factory=dict)  # 扩展元数据
@@ -66,6 +68,8 @@ class Task:
             'error_count': self.error_count,
             'last_error': self.last_error.isoformat() if self.last_error else None,
             'last_error_message': self.last_error_message,
+            'last_error_notification': self.last_error_notification.isoformat() if self.last_error_notification else None,
+            'error_notification_count': self.error_notification_count,
             'metadata': self.metadata
         }
     
@@ -73,7 +77,7 @@ class Task:
     def from_dict(cls, data: Dict[str, Any]) -> 'Task':
         """从字典创建任务对象"""
         # 处理时间戳字段
-        for field_name in ['created_at', 'updated_at', 'last_check', 'last_change', 'last_error']:
+        for field_name in ['created_at', 'updated_at', 'last_check', 'last_change', 'last_error', 'last_error_notification']:
             if field_name in data and data[field_name]:
                 if isinstance(data[field_name], str):
                     data[field_name] = datetime.fromisoformat(data[field_name])
