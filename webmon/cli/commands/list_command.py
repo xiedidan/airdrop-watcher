@@ -81,27 +81,21 @@ class ListCommand(Command):
             return
 
         # 计算列宽
-        headers = ['ID', '名称', 'URL', '间隔', '选择器', '状态', '启用']
+        headers = ['ID', '名称', '描述', 'URL', '间隔', '状态', '启用']
         rows = []
 
         for task in tasks:
             task_id = task.get('id', '')[:8]
             name = task.get('name', '')
+            description = self._truncate_text(task.get('description', '') or '', 20)
             url = self._truncate_url(task.get('url', ''))
             interval = f"{task.get('interval', 0)}秒"
-
-            # 显示选择器（支持多个）
-            selectors = task.get('selectors', [])
-            if selectors:
-                selector = ', '.join(selectors)
-            else:
-                selector = '-'
 
             # 显示真实的 status 字段
             status = task.get('status', 'unknown') or 'unknown'
             enabled = "是" if task.get('enabled', True) else "否"
 
-            rows.append([task_id, name, url, interval, selector, status, enabled])
+            rows.append([task_id, name, description, url, interval, status, enabled])
         
         # 使用tabulate输出表格
         try:
@@ -169,6 +163,14 @@ class ListCommand(Command):
         if len(url) <= max_length:
             return url
         return url[:max_length-3] + "..."
+
+    def _truncate_text(self, text: str, max_length: int = 20) -> str:
+        """截断文本显示"""
+        if not text:
+            return "-"
+        if len(text) <= max_length:
+            return text
+        return text[:max_length-3] + "..."
     
     def validate_args(self) -> bool:
         """验证参数"""
