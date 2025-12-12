@@ -151,6 +151,17 @@ class ConfigManager:
                 "compression": true,
                 "async_mode": true,
                 "buffer_size": 1000
+            },
+            "ai": {
+                "enabled": False,
+                "api_url": "https://api.deepseek.com/v1",
+                "api_key": "${AI_API_KEY}",
+                "model": "deepseek-reasoner",
+                "max_tokens": 2048,
+                "temperature": 0.7,
+                "timeout": 60,
+                "system_prompt": "你是一个专业的网页内容变化分析助手。你的任务是：\n1. 分析网页内容的变化\n2. 提取用户可能关注的关键信息\n3. 用简洁的自然语言总结变化要点\n4. 如果变化涉及价格、时间、状态等重要信息，请特别指出\n\n请用中文回复，保持简洁（不超过200字），重点突出关键变化。",
+                "user_prompt_template": "## 监控任务信息\n- 任务名称：{task_name}\n- 监控URL：{url}\n- 任务描述：{description}\n\n## 检测到的变化内容\n{changes}\n\n请分析以上变化，提取关键信息并生成简洁的摘要。"
             }
         }
         
@@ -581,6 +592,50 @@ class ConfigManager:
     def get_scheduler_config(self) -> Dict[str, Any]:
         """获取调度器配置"""
         return self.json_config.get("scheduler", {})
+
+    def get_ai_config(self) -> Dict[str, Any]:
+        """获取AI分析配置"""
+        return self.json_config.get("ai", {})
+
+    def update_ai_config(self, ai_config: Dict[str, Any]) -> bool:
+        """
+        更新AI分析配置
+
+        Args:
+            ai_config: AI配置
+
+        Returns:
+            是否成功
+        """
+        try:
+            # 验证AI配置
+            if not self.validator.validate_ai_config(ai_config):
+                return False
+
+            # 更新配置
+            self.json_config.set("ai", ai_config)
+            self.json_config.save()
+
+            self.logger.info("AI配置已更新")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"更新AI配置失败: {e}")
+            return False
+
+    def get_ai_config_value(self, key: str, default: Any = None) -> Any:
+        """
+        获取AI配置值
+
+        Args:
+            key: 配置键名
+            default: 默认值
+
+        Returns:
+            配置值
+        """
+        ai_config = self.get_ai_config()
+        return ai_config.get(key, default)
     
     def update_scheduler_config(self, scheduler_config: Dict[str, Any]) -> bool:
         """

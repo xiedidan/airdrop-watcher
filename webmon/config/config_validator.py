@@ -76,7 +76,12 @@ class ConfigValidator:
             # 验证日志配置
             if not self.validate_logging_config(config.get('logging', {})):
                 return False
-            
+
+            # 验证AI配置（可选）
+            if 'ai' in config:
+                if not self.validate_ai_config(config.get('ai', {})):
+                    return False
+
             # 验证任务配置
             if not self._validate_tasks_config(config.get('tasks', [])):
                 return False
@@ -487,9 +492,101 @@ class ConfigValidator:
             
             self.logger.info("日志配置验证通过")
             return True
-            
+
         except Exception as e:
             self.logger.error(f"日志配置验证失败: {e}")
+            return False
+
+    def validate_ai_config(self, ai_config: Dict[str, Any]) -> bool:
+        """
+        验证AI分析配置
+
+        Args:
+            ai_config: AI配置
+
+        Returns:
+            是否有效
+        """
+        try:
+            if not isinstance(ai_config, dict):
+                self.logger.error("AI配置必须是字典类型")
+                return False
+
+            # 验证启用开关
+            if 'enabled' in ai_config:
+                if not self._validate_boolean(ai_config['enabled']):
+                    return False
+
+            # 验证API URL
+            if 'api_url' in ai_config and ai_config['api_url']:
+                if not self._validate_url(ai_config['api_url']):
+                    return False
+
+            # 验证API Key（允许为空或环境变量占位符）
+            if 'api_key' in ai_config and ai_config['api_key']:
+                api_key = ai_config['api_key']
+                if not isinstance(api_key, str):
+                    self.logger.error("API Key必须是字符串")
+                    return False
+
+            # 验证模型名称
+            if 'model' in ai_config:
+                model = ai_config['model']
+                if not isinstance(model, str) or not model.strip():
+                    self.logger.error("模型名称必须是非空字符串")
+                    return False
+
+            # 验证最大token数
+            if 'max_tokens' in ai_config:
+                max_tokens = ai_config['max_tokens']
+                if not isinstance(max_tokens, int) or max_tokens <= 0:
+                    self.logger.error(f"最大token数必须是正整数: {max_tokens}")
+                    return False
+                if max_tokens > 32768:
+                    self.logger.warning(f"最大token数设置过大: {max_tokens}")
+
+            # 验证温度参数
+            if 'temperature' in ai_config:
+                temperature = ai_config['temperature']
+                if not isinstance(temperature, (int, float)):
+                    self.logger.error("温度参数必须是数字")
+                    return False
+                if temperature < 0 or temperature > 2.0:
+                    self.logger.error(f"温度参数超出范围: {temperature} (范围: 0-2.0)")
+                    return False
+
+            # 验证超时时间
+            if 'timeout' in ai_config:
+                timeout = ai_config['timeout']
+                if not isinstance(timeout, int) or timeout <= 0:
+                    self.logger.error(f"超时时间必须是正整数: {timeout}")
+                    return False
+                if timeout > 300:
+                    self.logger.warning(f"超时时间设置过长: {timeout}秒")
+
+            # 验证系统提示词
+            if 'system_prompt' in ai_config:
+                system_prompt = ai_config['system_prompt']
+                if not isinstance(system_prompt, str):
+                    self.logger.error("系统提示词必须是字符串")
+                    return False
+                if len(system_prompt) > 10000:
+                    self.logger.warning(f"系统提示词过长: {len(system_prompt)}字符")
+
+            # 验证用户提示词模板
+            if 'user_prompt_template' in ai_config:
+                user_prompt_template = ai_config['user_prompt_template']
+                if not isinstance(user_prompt_template, str):
+                    self.logger.error("用户提示词模板必须是字符串")
+                    return False
+                if len(user_prompt_template) > 10000:
+                    self.logger.warning(f"用户提示词模板过长: {len(user_prompt_template)}字符")
+
+            self.logger.info("AI配置验证通过")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"AI配置验证失败: {e}")
             return False
     
     def _validate_rotation_config(self, rotation: Dict[str, Any]) -> bool:
