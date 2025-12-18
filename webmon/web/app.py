@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from webmon.web.api.root import router as root_router, set_start_time
+from webmon.web.api.tasks import router as tasks_router
 
 
 # 全局应用实例
@@ -69,6 +70,7 @@ def create_app() -> FastAPI:
 
     # 注册路由
     app.include_router(root_router)
+    app.include_router(tasks_router)
 
     # 挂载静态文件（如果存在）
     static_dir = os.path.join(os.path.dirname(__file__), "static")
