@@ -1,5 +1,10 @@
 # WebMon - 网页监控工具依赖
 
+# Web API 框架
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+sse-starlette>=1.8.0
+
 # 浏览器自动化
 playwright>=1.40.0
 
