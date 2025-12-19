@@ -27,6 +27,14 @@ class CheckResult:
     # 变化信息
     changed: bool = False  # 是否变化
     change_type: str = "none"  # 变化类型: none, content_change, structure_change, new_content
+
+    # 变化详情
+    content_diff: Optional[str] = None  # 内容差异（unified diff格式）
+    added_lines: int = 0  # 新增行数
+    removed_lines: int = 0  # 删除行数
+    modified_lines: int = 0  # 修改行数
+    changes_summary: Optional[str] = None  # 变化摘要
+    change_details: List[Dict[str, Any]] = field(default_factory=list)  # 变化详情列表
     
     # 错误信息
     error_message: Optional[str] = None  # 错误信息
@@ -69,6 +77,12 @@ class CheckResult:
             'load_time': self.load_time,
             'changed': self.changed,
             'change_type': self.change_type,
+            'content_diff': self.content_diff,
+            'added_lines': self.added_lines,
+            'removed_lines': self.removed_lines,
+            'modified_lines': self.modified_lines,
+            'changes_summary': self.changes_summary,
+            'change_details': self.change_details,
             'error_message': self.error_message,
             'error_type': self.error_type,
             'extracted_data': self.extracted_data,
@@ -103,8 +117,10 @@ class CheckResult:
         """设置内容并计算哈希"""
         if content:
             self.content_size = len(content.encode('utf-8'))
-            self.content_preview = content[:500] if len(content) > 500 else content
-            
+            # 保存完整内容用于对比（最大200KB，约200000字符）
+            max_preview_length = 200000
+            self.content_preview = content[:max_preview_length] if len(content) > max_preview_length else content
+
             if calculate_hash:
                 self.content_hash = self.calculate_content_hash(content)
         else:
@@ -132,15 +148,37 @@ class CheckResult:
         self.changed = False
         self.change_type = "none"
     
-    def mark_as_changed(self, change_type: str = "content_change"):
-        """标记为已变化"""
+    def mark_as_changed(self, change_type: str = "content_change",
+                       diff_result: Optional[Dict[str, Any]] = None):
+        """
+        标记为已变化
+
+        Args:
+            change_type: 变化类型
+            diff_result: 差异对比结果（来自ContentDiff.compute_diff()）
+        """
         self.changed = True
         self.change_type = change_type
+
+        # 如果提供了diff_result，保存详细变化信息
+        if diff_result:
+            self.content_diff = diff_result.get('unified_diff')
+            self.added_lines = diff_result.get('added_lines', 0)
+            self.removed_lines = diff_result.get('removed_lines', 0)
+            self.modified_lines = diff_result.get('modified_lines', 0)
+            self.changes_summary = diff_result.get('changes_summary')
+            self.change_details = diff_result.get('change_details', [])
     
     def mark_as_unchanged(self):
         """标记为未变化"""
         self.changed = False
         self.change_type = "none"
+        self.content_diff = None
+        self.added_lines = 0
+        self.removed_lines = 0
+        self.modified_lines = 0
+        self.changes_summary = None
+        self.change_details = []
     
     def get_summary(self) -> Dict[str, Any]:
         """获取结果摘要信息"""
@@ -152,6 +190,7 @@ class CheckResult:
             'success': self.success,
             'changed': self.changed,
             'change_type': self.change_type,
+            'changes_summary': self.changes_summary,
             'content_size': self.content_size,
             'load_time': self.load_time,
             'error_type': self.error_type

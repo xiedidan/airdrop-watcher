@@ -327,8 +327,21 @@ class BrowserEngine:
                 "content_size": len(content.encode('utf-8')),
                 "success": True
             }
-            
+
             self.logger.info(f"页面内容获取成功: {url}, 大小: {result['content_size']}字节, 耗时: {load_time:.2f}秒")
+
+            # DEBUG: 输出抓取到的页面内容摘要
+            self.logger.debug(f"[DEBUG-CONTENT] URL: {url}")
+            self.logger.debug(f"[DEBUG-CONTENT] 页面标题: {title}")
+            self.logger.debug(f"[DEBUG-CONTENT] 内容大小: {result['content_size']} 字节")
+
+            # 输出页面内容的前2000个字符用于调试
+            content_preview = content[:2000] if len(content) > 2000 else content
+            self.logger.debug(f"[DEBUG-CONTENT] 页面内容预览 (前2000字符):\n{content_preview}")
+
+            # 如果有提取的内容，也输出
+            if extracted_content:
+                self.logger.debug(f"[DEBUG-CONTENT] 选择器提取内容: {extracted_content}")
             
             return result
             

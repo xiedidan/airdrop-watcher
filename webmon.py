@@ -11,6 +11,7 @@ from pathlib import Path
 # 添加webmon模块路径到Python路径
 sys.path.insert(0, str(Path(__file__).parent / 'webmon'))
 
+from dotenv import load_dotenv
 from webmon.cli.argument_parser import ArgumentParser
 from webmon.cli.command_factory import CommandFactory
 from webmon.utils.logger import setup_global_logger, get_logger
@@ -18,7 +19,8 @@ from webmon.utils.logger import setup_global_logger, get_logger
 
 def main():
     """主程序入口"""
-    # 设置全局日志
+    # 先加载环境变量，再设置日志
+    load_dotenv()
     setup_global_logger()
     logger = get_logger(__name__)
     

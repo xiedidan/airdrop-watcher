@@ -593,9 +593,76 @@ class ConfigManager:
         """获取调度器配置"""
         return self.json_config.get("scheduler", {})
 
-    def get_ai_config(self) -> Dict[str, Any]:
-        """获取AI分析配置"""
-        return self.json_config.get("ai", {})
+    def get_ai_config(self, resolve_env: bool = False) -> Dict[str, Any]:
+        """
+        获取AI分析配置
+
+        Args:
+            resolve_env: 是否解析环境变量占位符
+
+        Returns:
+            AI配置字典
+        """
+        config = self.json_config.get("ai", {})
+        if resolve_env:
+            return self._resolve_env_vars(config)
+        return config
+
+    def _resolve_env_var(self, value: str) -> str:
+        """
+        解析单个环境变量占位符
+
+        支持格式: ${VAR_NAME} 或 ${VAR_NAME:-default}
+
+        Args:
+            value: 可能包含环境变量占位符的字符串
+
+        Returns:
+            解析后的字符串
+        """
+        if not isinstance(value, str):
+            return value
+
+        if not value.startswith('${'):
+            return value
+
+        # 移除 ${ 和 }
+        if value.endswith('}'):
+            var_expr = value[2:-1]
+        else:
+            return value
+
+        # 检查是否有默认值 (${VAR:-default})
+        if ':-' in var_expr:
+            var_name, default = var_expr.split(':-', 1)
+            return os.getenv(var_name, default)
+        else:
+            return os.getenv(var_expr, '')
+
+    def _resolve_env_vars(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        递归解析配置中的所有环境变量占位符
+
+        Args:
+            config: 配置字典
+
+        Returns:
+            解析后的配置字典
+        """
+        resolved = {}
+        for key, value in config.items():
+            if isinstance(value, str):
+                resolved[key] = self._resolve_env_var(value)
+            elif isinstance(value, dict):
+                resolved[key] = self._resolve_env_vars(value)
+            elif isinstance(value, list):
+                resolved[key] = [
+                    self._resolve_env_var(item) if isinstance(item, str) else item
+                    for item in value
+                ]
+            else:
+                resolved[key] = value
+        return resolved
 
     def update_ai_config(self, ai_config: Dict[str, Any]) -> bool:
         """

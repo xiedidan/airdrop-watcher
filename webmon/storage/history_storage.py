@@ -74,6 +74,14 @@ class HistoryStorage:
     def _save_history(self, history: Dict[str, Any]):
         """保存历史记录"""
         try:
+            # 确保 metadata 字段存在
+            if "metadata" not in history:
+                history["metadata"] = {
+                    "total_entries": 0,
+                    "first_entry_date": None,
+                    "last_entry_date": None
+                }
+
             # 更新元数据
             entries = history.get("entries", [])
             if entries:

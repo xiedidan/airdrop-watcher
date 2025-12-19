@@ -24,6 +24,11 @@ class AIConfig:
     temperature: float = 0.7
     timeout: int = 60  # 秒
 
+    # 重试配置
+    retry_attempts: int = 3  # 最大重试次数
+    retry_base_delay: float = 5.0  # 重试基础延迟(秒)
+    retry_max_delay: float = 60.0  # 重试最大延迟(秒)
+
     # 提示词配置
     system_prompt: str = field(default_factory=lambda: (
         "你是一个专业的网页内容变化分析助手。你的任务是：\n"
@@ -54,6 +59,9 @@ class AIConfig:
             'max_tokens': self.max_tokens,
             'temperature': self.temperature,
             'timeout': self.timeout,
+            'retry_attempts': self.retry_attempts,
+            'retry_base_delay': self.retry_base_delay,
+            'retry_max_delay': self.retry_max_delay,
             'system_prompt': self.system_prompt,
             'user_prompt_template': self.user_prompt_template,
         }
@@ -71,6 +79,9 @@ class AIConfig:
             max_tokens=data.get('max_tokens', 2048),
             temperature=data.get('temperature', 0.7),
             timeout=data.get('timeout', 60),
+            retry_attempts=data.get('retry_attempts', 3),
+            retry_base_delay=data.get('retry_base_delay', 5.0),
+            retry_max_delay=data.get('retry_max_delay', 60.0),
             system_prompt=data.get('system_prompt', defaults.system_prompt),
             user_prompt_template=data.get('user_prompt_template', defaults.user_prompt_template),
         )

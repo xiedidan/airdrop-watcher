@@ -15,6 +15,7 @@ import sys
 from webmon.utils.logger import get_logger
 from webmon.models.task import Task
 from webmon.models.check_result import CheckResult
+from webmon.models.change_details import ChangeDetails
 from webmon.storage.task_storage import TaskStorage
 from webmon.storage.history_storage import HistoryStorage
 from webmon.config import ConfigManager
@@ -74,6 +75,12 @@ class TaskScheduler:
             'start_time': None,
             'uptime': 0
         }
+
+        # 任务状态跟踪（用于检测配置变化）
+        # 存储格式: {task_id: {'enabled': bool, 'interval': int, 'timeout': int, ...}}
+        self._tracked_task_configs: Dict[str, Dict[str, Any]] = {}
+        self._last_task_scan_time: Optional[datetime] = None
+        self._task_scan_interval = 5  # 每5秒扫描一次任务状态变化
 
         # 核心组件
         self.job_queue = JobQueue(max_size=self.scheduler_config.max_queue_size)
@@ -278,39 +285,251 @@ class TaskScheduler:
         try:
             self.logger.info("正在加载所有任务...")
             tasks = self.storage.list_tasks()
-            
+
             for task in tasks:
+                # 记录任务的配置信息（用于检测变化）
+                self._tracked_task_configs[task.id] = self._extract_task_config(task)
                 if task.enabled:
                     await self._schedule_task(task)
-            
+
+            self._last_task_scan_time = datetime.now()
             self.logger.info(f"成功加载 {len(tasks)} 个任务，其中 {sum(1 for t in tasks if t.enabled)} 个已启用")
-            
+
         except Exception as e:
             self.logger.error(f"加载任务失败: {e}")
             raise
+
+    def _extract_task_config(self, task: Task) -> Dict[str, Any]:
+        """提取任务的关键配置（用于检测变化）"""
+        return {
+            'enabled': task.enabled,
+            'interval': task.interval,
+            'timeout': task.timeout,
+            'url': task.url,
+            'selectors': task.selectors.copy() if task.selectors else []
+        }
+
+    async def _process_restart_signals(self):
+        """
+        处理任务重启信号
+
+        检查 data/.restart_signals 目录下的信号文件，
+        对每个信号文件对应的任务执行立即重启。
+        """
+        try:
+            signal_dir = Path("data/.restart_signals")
+            if not signal_dir.exists():
+                return
+
+            # 获取所有信号文件
+            signal_files = list(signal_dir.glob("*.restart"))
+            if not signal_files:
+                return
+
+            for signal_file in signal_files:
+                try:
+                    # 提取任务ID
+                    task_id = signal_file.stem  # 去掉 .restart 后缀
+
+                    # 删除信号文件（无论任务是否存在）
+                    signal_file.unlink()
+
+                    # 获取任务
+                    task = self.storage.get_task(task_id)
+                    if not task:
+                        self.logger.warning(f"收到重启信号但任务不存在: {task_id}")
+                        continue
+
+                    self.logger.info(f"收到任务重启信号: {task.name} (ID: {task_id})")
+
+                    # 更新跟踪配置（强制下次检测到变化）
+                    self._tracked_task_configs[task_id] = self._extract_task_config(task)
+
+                    # 如果任务已启用，立即重新调度
+                    if task.enabled:
+                        # 先从队列移除旧的调度
+                        await self.job_queue.remove_task(task_id)
+
+                        # 如果任务正在运行，等待它完成后会自动重新调度
+                        async with self._running_tasks_lock:
+                            if task_id in self.running_tasks:
+                                self.logger.info(f"任务 {task.name} 正在运行中，将在完成后使用新配置重新调度")
+                                continue
+
+                        # 立即调度（immediate=True）
+                        await self._schedule_task(task, immediate=True)
+                        self.logger.info(f"任务 {task.name} 已立即重新调度")
+                    else:
+                        self.logger.info(f"任务 {task.name} 已禁用，跳过重新调度")
+
+                except Exception as e:
+                    self.logger.error(f"处理重启信号文件 {signal_file} 失败: {e}")
+
+        except Exception as e:
+            self.logger.error(f"处理任务重启信号时出错: {e}")
+
+    async def _check_task_state_changes(self):
+        """检查任务配置变化（包括启用状态、间隔、超时等）"""
+        try:
+            # 首先检查是否有任务重启信号
+            await self._process_restart_signals()
+
+            # 检查是否需要扫描
+            now = datetime.now()
+            if self._last_task_scan_time:
+                elapsed = (now - self._last_task_scan_time).total_seconds()
+                if elapsed < self._task_scan_interval:
+                    return
+
+            self._last_task_scan_time = now
+
+            # 重新加载所有任务
+            tasks = self.storage.list_tasks()
+            current_task_ids = set()
+
+            for task in tasks:
+                current_task_ids.add(task.id)
+                previous_config = self._tracked_task_configs.get(task.id)
+                current_config = self._extract_task_config(task)
+
+                # 新任务
+                if previous_config is None:
+                    self._tracked_task_configs[task.id] = current_config
+                    if task.enabled:
+                        self.logger.info(f"检测到新任务 {task.name} (ID: {task.id})，已启用，添加到调度队列")
+                        await self._schedule_task(task, immediate=True)
+                    continue
+
+                # 检测配置变化
+                config_changed = False
+                changes = []
+
+                # 检查启用状态
+                if previous_config['enabled'] != current_config['enabled']:
+                    config_changed = True
+                    if current_config['enabled']:
+                        changes.append("启用")
+                    else:
+                        changes.append("禁用")
+
+                # 检查间隔变化
+                if previous_config['interval'] != current_config['interval']:
+                    config_changed = True
+                    changes.append(f"间隔: {previous_config['interval']}s → {current_config['interval']}s")
+
+                # 检查超时变化
+                if previous_config['timeout'] != current_config['timeout']:
+                    config_changed = True
+                    changes.append(f"超时: {previous_config['timeout']}ms → {current_config['timeout']}ms")
+
+                # 检查 URL 变化
+                if previous_config['url'] != current_config['url']:
+                    config_changed = True
+                    changes.append("URL 已更新")
+
+                # 检查选择器变化
+                if previous_config['selectors'] != current_config['selectors']:
+                    config_changed = True
+                    changes.append("选择器已更新")
+
+                # 如果有配置变化
+                if config_changed:
+                    self._tracked_task_configs[task.id] = current_config
+                    self.logger.info(f"任务 {task.name} (ID: {task.id}) 配置已变化: {', '.join(changes)}")
+
+                    # 处理启用状态变化
+                    if previous_config['enabled'] and not current_config['enabled']:
+                        # 从启用变为禁用
+                        self.logger.info(f"任务 {task.name} 已禁用，从调度队列移除")
+                        await self.job_queue.remove_task(task.id)
+                        async with self._running_tasks_lock:
+                            if task.id in self.running_tasks:
+                                self.logger.info(f"任务 {task.name} 正在执行中，将在完成后不再重新调度")
+                    elif not previous_config['enabled'] and current_config['enabled']:
+                        # 从禁用变为启用
+                        self.logger.info(f"任务 {task.name} 已启用，添加到调度队列")
+                        await self._schedule_task(task, immediate=True)
+                    elif current_config['enabled']:
+                        # 任务仍然启用，但其他配置变化了，需要重新调度
+                        self.logger.info(f"任务 {task.name} 配置已更新，重新调度")
+                        await self._reschedule_task(task)
+
+            # 清理已删除任务的状态跟踪
+            deleted_task_ids = set(self._tracked_task_configs.keys()) - current_task_ids
+            for task_id in deleted_task_ids:
+                del self._tracked_task_configs[task_id]
+                self.logger.debug(f"清理已删除任务的状态跟踪: {task_id}")
+
+        except Exception as e:
+            self.logger.error(f"检查任务状态变化时出错: {e}")
     
     async def _schedule_task(self, task: Task, immediate: bool = False):
         """调度单个任务"""
         try:
-            # 从存储重新加载任务状态，检查是否被禁用
+            # 从存储重新加载任务的最新配置
             latest_task = self.storage.get_task(task.id)
-            if latest_task and not latest_task.enabled:
-                self.logger.info(f"任务 {task.name} (ID: {task.id}) 已被禁用，跳过调度")
+            if not latest_task:
+                self.logger.warning(f"任务 {task.id} 不存在，跳过调度")
                 return
+
+            if not latest_task.enabled:
+                self.logger.info(f"任务 {latest_task.name} (ID: {task.id}) 已被禁用，跳过调度")
+                return
+
+            # 使用最新的任务配置进行调度
+            task_to_schedule = latest_task
 
             # 计算下次执行时间
             now = datetime.now()
             if immediate:
                 next_run = now
-            elif task.last_check:
-                # 基于上次检测时间计算
-                next_run = task.last_check + timedelta(seconds=task.interval)
+            elif task_to_schedule.last_check:
+                # 基于上次检测时间和最新的间隔计算
+                next_run = task_to_schedule.last_check + timedelta(seconds=task_to_schedule.interval)
             else:
                 # 新任务，立即执行
                 next_run = now
 
             # 如果下次运行时间已过，立即执行
             if next_run <= now:
+                next_run = now
+
+            # 添加到调度队列（使用最新的任务对象）
+            job = {
+                'task': task_to_schedule,
+                'next_run': next_run,
+                'priority': self.priority_manager.calculate_priority(task_to_schedule),
+                'retry_count': 0
+            }
+
+            await self.job_queue.put(job)
+
+            self.task_next_run[task_to_schedule.id] = next_run
+            self.logger.debug(f"任务 {task_to_schedule.name} (ID: {task_to_schedule.id}) 已调度，下次运行: {next_run}，间隔: {task_to_schedule.interval}秒")
+
+        except Exception as e:
+            self.logger.error(f"调度任务 {task.name} 失败: {e}")
+
+    async def _reschedule_task(self, task: Task):
+        """
+        重新调度任务（当任务配置变化时调用）
+
+        先移除旧的调度，然后基于新配置重新调度
+        """
+        try:
+            # 先从队列中移除旧的调度
+            await self.job_queue.remove_task(task.id)
+
+            # 计算新的下次执行时间
+            now = datetime.now()
+            if task.last_check:
+                # 基于上次检测时间和新的间隔计算
+                next_run = task.last_check + timedelta(seconds=task.interval)
+                # 如果计算出的时间已经过去，则立即执行
+                if next_run <= now:
+                    next_run = now
+            else:
+                # 没有上次检测记录，立即执行
                 next_run = now
 
             # 添加到调度队列
@@ -324,57 +543,85 @@ class TaskScheduler:
             await self.job_queue.put(job)
 
             self.task_next_run[task.id] = next_run
-            self.logger.debug(f"任务 {task.name} (ID: {task.id}) 已调度，下次运行: {next_run}")
+            self.logger.info(f"任务 {task.name} (ID: {task.id}) 已重新调度，下次运行: {next_run.strftime('%H:%M:%S')}")
 
         except Exception as e:
-            self.logger.error(f"调度任务 {task.name} 失败: {e}")
+            self.logger.error(f"重新调度任务 {task.name} 失败: {e}")
 
     async def _schedule_task_with_delay(self, task: Task, delay_seconds: int):
         """延迟调度任务（用于错误恢复）"""
         try:
-            # 从存储重新加载任务状态，检查是否被禁用
+            # 从存储重新加载任务的最新配置
             latest_task = self.storage.get_task(task.id)
-            if latest_task and not latest_task.enabled:
-                self.logger.info(f"任务 {task.name} (ID: {task.id}) 已被禁用，跳过错误恢复调度")
+            if not latest_task:
+                self.logger.warning(f"任务 {task.id} 不存在，跳过错误恢复调度")
                 return
 
+            if not latest_task.enabled:
+                self.logger.info(f"任务 {latest_task.name} (ID: {task.id}) 已被禁用，跳过错误恢复调度")
+                return
+
+            # 使用最新的任务配置
+            task_to_schedule = latest_task
             next_run = datetime.now() + timedelta(seconds=delay_seconds)
 
             job = {
-                'task': task,
+                'task': task_to_schedule,
                 'next_run': next_run,
-                'priority': self.priority_manager.calculate_priority(task) - 20,  # 降低优先级
+                'priority': self.priority_manager.calculate_priority(task_to_schedule) - 20,  # 降低优先级
                 'retry_count': 0
             }
 
             await self.job_queue.put(job)
 
-            self.task_next_run[task.id] = next_run
+            self.task_next_run[task_to_schedule.id] = next_run
             self.logger.info(
-                f"任务 {task.name} (ID: {task.id}) 已调度错误恢复，"
+                f"任务 {task_to_schedule.name} (ID: {task_to_schedule.id}) 已调度错误恢复，"
                 f"将在 {delay_seconds}秒 后重试（{next_run.strftime('%Y-%m-%d %H:%M:%S')}）"
             )
 
         except Exception as e:
             self.logger.error(f"延迟调度任务 {task.name} 失败: {e}")
 
-    def _calculate_error_backoff(self, error_count: int) -> int:
-        """计算错误退避时间（指数退避）"""
-        # 基础间隔：5分钟
-        base_interval = 300  # 秒
+    def _calculate_error_backoff(self, error_count: int, task_interval: int) -> int:
+        """
+        计算错误退避时间（渐进式退避）
 
-        # 指数退避：2^error_count * base_interval
-        # 最大退避时间：24小时
-        backoff = min(base_interval * (2 ** (error_count - 1)), 86400)
+        退避策略：
+        - 第1次失败: 30秒
+        - 第2次失败: 60秒
+        - 第3次失败: 120秒
+        - 第4次失败: 240秒
+        - ...以此类推（每次翻倍）
+        - 最大不超过任务本身的间隔时间
 
-        self.logger.debug(f"错误计数 {error_count}，计算退避时间: {backoff}秒 ({backoff/60:.1f}分钟)")
+        Args:
+            error_count: 错误次数
+            task_interval: 任务本身的检测间隔（秒）
+
+        Returns:
+            退避时间（秒）
+        """
+        # 基础间隔：30秒
+        base_interval = 30  # 秒
+
+        # 指数退避：2^(error_count-1) * base_interval
+        backoff = base_interval * (2 ** (error_count - 1))
+
+        # 最大不超过任务本身的间隔
+        backoff = min(backoff, task_interval)
+
+        self.logger.debug(
+            f"错误计数 {error_count}，任务间隔 {task_interval}秒，"
+            f"计算退避时间: {backoff}秒 ({backoff/60:.1f}分钟)"
+        )
 
         return int(backoff)
 
     async def _scheduler_loop(self):
         """主调度循环"""
         self.logger.info("调度循环已启动")
-        
+
         try:
             while not self._shutdown_event.is_set():
                 try:
@@ -382,7 +629,10 @@ class TaskScheduler:
                     if self._pause_event.is_set():
                         await asyncio.sleep(1)
                         continue
-                    
+
+                    # 检查任务启用/禁用状态变化
+                    await self._check_task_state_changes()
+
                     # 获取当前时间
                     now = datetime.now()
                     
@@ -466,18 +716,59 @@ class TaskScheduler:
                 if not page_content:
                     raise Exception("无法获取网页内容")
 
+                # DEBUG: 输出获取的页面信息
+                self.logger.debug(f"[DEBUG-TASK] 任务 {task.name} 页面获取成功")
+                if isinstance(page_content, dict):
+                    self.logger.debug(f"[DEBUG-TASK] 页面URL: {page_content.get('url', 'N/A')}")
+                    self.logger.debug(f"[DEBUG-TASK] 页面标题: {page_content.get('title', 'N/A')}")
+                    self.logger.debug(f"[DEBUG-TASK] 内容大小: {page_content.get('content_size', 'N/A')} 字节")
+
+                # 确定用于对比的内容
+                # 如果有选择器且提取到了内容，使用选择器提取的内容；否则使用完整页面内容
+                extracted_content = page_content.get('extracted_content', {}) if isinstance(page_content, dict) else {}
+                if task.selectors and extracted_content:
+                    # 将选择器提取的内容合并为字符串用于对比
+                    content_parts = []
+                    for selector, content_value in extracted_content.items():
+                        if content_value:
+                            if isinstance(content_value, list):
+                                content_parts.append(f"[{selector}]\n" + "\n".join(str(v) for v in content_value))
+                            else:
+                                content_parts.append(f"[{selector}]\n{content_value}")
+                    new_content_for_compare = "\n\n".join(content_parts)
+                    self.logger.debug(f"[DEBUG-TASK] 使用选择器提取内容进行对比，内容长度: {len(new_content_for_compare)} 字符")
+                    self.logger.debug(f"[DEBUG-TASK] 选择器提取内容预览:\n{new_content_for_compare[:1000]}")
+                else:
+                    # 没有选择器或未提取到内容，使用完整页面
+                    new_content_for_compare = page_content.get('content', '') if isinstance(page_content, dict) else str(page_content)
+                    self.logger.debug(f"[DEBUG-TASK] 使用完整页面内容进行对比，内容长度: {len(new_content_for_compare)} 字符")
+
                 # 获取历史内容
                 previous_result = self.history_storage.get_latest_check_result(task.id)
                 old_content = previous_result.content_preview if previous_result and hasattr(previous_result, 'content_preview') else ""
+
+                # DEBUG: 输出历史内容信息
+                self.logger.debug(f"[DEBUG-TASK] 是否有历史记录: {previous_result is not None}")
+                if old_content:
+                    self.logger.debug(f"[DEBUG-TASK] 历史内容长度: {len(old_content)} 字符")
+                    old_preview = old_content[:500] if len(old_content) > 500 else old_content
+                    self.logger.debug(f"[DEBUG-TASK] 历史内容预览 (前500字符):\n{old_preview}")
+                else:
+                    self.logger.debug(f"[DEBUG-TASK] 历史内容为空（首次监控）")
 
                 # 检测变化
                 check_result_dict = await self.change_detector.detect_changes(
                     task_id=task.id,
                     url=task.url,
                     old_content=old_content,
-                    new_content=page_content.get('content', '') if isinstance(page_content, dict) else str(page_content),
+                    new_content=new_content_for_compare,
                     selectors=task.selectors
                 )
+
+                # DEBUG: 输出检测结果
+                self.logger.debug(f"[DEBUG-TASK] 检测结果 - changed: {check_result_dict.get('changed', False)}")
+                self.logger.debug(f"[DEBUG-TASK] 检测结果 - change_type: {check_result_dict.get('change_type', 'N/A')}")
+                self.logger.debug(f"[DEBUG-TASK] 检测结果 - algorithm: {check_result_dict.get('algorithm', 'N/A')}")
 
                 # 将字典转换为CheckResult对象
                 check_result = CheckResult(
@@ -492,8 +783,7 @@ class TaskScheduler:
                 # 如果检测到变化，计算详细差异
                 if check_result.changed and old_content:
                     try:
-                        new_content = page_content.get('content', '') if isinstance(page_content, dict) else str(page_content)
-                        diff_result = self.content_diff.compute_diff(old_content, new_content)
+                        diff_result = self.content_diff.compute_diff(old_content, new_content_for_compare)
 
                         # 保存差异信息到CheckResult
                         check_result.mark_as_changed(
@@ -508,8 +798,9 @@ class TaskScheduler:
                         self.logger.warning(f"计算内容差异失败: {e}")
 
                 # 保存内容预览（用于下次对比）
-                new_content = page_content.get('content', '') if isinstance(page_content, dict) else str(page_content)
-                check_result.set_content(new_content, calculate_hash=False)  # hash已经计算过了
+                # 保存用于对比的内容（选择器提取内容或完整页面）
+                check_result.set_content(new_content_for_compare, calculate_hash=False)  # hash已经计算过了
+                self.logger.debug(f"[DEBUG-TASK] 保存内容预览，长度: {len(new_content_for_compare)} 字符")
 
                 # 保存检测结果
                 self.history_storage.add_check_result(check_result)
@@ -535,12 +826,24 @@ class TaskScheduler:
 
                     self.logger.info(f"检测到变化 - 任务: {task.name}, URL: {task.url}")
 
-                    # 发送通知
+                    # 构建变化详情对象
+                    change_details = ChangeDetails(
+                        task_id=task.id,
+                        url=task.url,
+                        check_result_id=check_result.id,
+                        similarity=1.0 - (check_result.added_lines + check_result.removed_lines) / 100.0 if check_result.added_lines or check_result.removed_lines else 0.9,
+                        change_summary=change_summary,
+                        old_content=old_content[:2000] if old_content else "",
+                        new_content=new_content_for_compare[:2000] if new_content_for_compare else "",
+                        change_types=[check_result.change_type] if check_result.change_type else [],
+                    )
+
+                    # 发送通知（使用支持AI分析的方法）
                     try:
-                        await self.notification_service.send_change_notification(
-                            task_name=task.name,
-                            url=task.url,
-                            change_summary=change_summary
+                        await self.notification_service.send_webpage_change_notification(
+                            task=task,
+                            check_result=check_result,
+                            change_details=change_details
                         )
                         self.logger.info(f"任务 {task.name} 检测到变化，已发送通知")
                     except Exception as e:
@@ -578,9 +881,13 @@ class TaskScheduler:
                 # 记录执行时间
                 execution_time = (datetime.now() - start_time).total_seconds()
                 self.logger.info(f"任务 {task.name} 执行完成，耗时: {execution_time:.2f}秒")
-                
+
                 # 更新统计
                 self.stats['successful_executions'] += 1
+
+                # 成功执行后，重新调度任务
+                if self.is_running and not self._shutdown_event.is_set():
+                    await self._schedule_task(task)
                 
             finally:
                 # 释放资源
@@ -589,22 +896,19 @@ class TaskScheduler:
         except Exception as e:
             self.stats['failed_executions'] += 1
             self.logger.error(f"任务 {task.name} 执行失败: {e}")
-            
-            # 失败处理
+
+            # 失败处理（包含重新调度逻辑）
             await self._handle_task_failure(task, e)
-            
+
         finally:
             # 从运行中任务列表移除（使用锁保护）
             async with self._running_tasks_lock:
                 if task.id in self.running_tasks:
                     del self.running_tasks[task.id]
 
-            # 重新调度任务（如果还在运行）
-            if self.is_running and not self._shutdown_event.is_set():
-                try:
-                    await self._schedule_task(task)
-                except Exception as e:
-                    self.logger.error(f"重新调度任务 {task.name} 失败: {e}")
+            # 注意：失败的任务由 _handle_task_failure 处理调度
+            # 这里只处理成功执行的任务的重新调度
+            # 成功执行的任务在上面已经调用了 _schedule_task
 
     def _should_send_error_notification(self, task: Task) -> bool:
         """
@@ -646,72 +950,59 @@ class TaskScheduler:
         return False
 
     async def _handle_task_failure(self, task: Task, error: Exception):
-        """处理任务失败"""
-        try:
-            # 获取失败次数
-            retry_count = getattr(task, 'retry_count', 0)
-            
-            if retry_count < self.retry_attempts:
-                # 重试任务
-                retry_count += 1
-                task.retry_count = retry_count
-                
-                # 计算重试延迟（指数退避）
-                retry_delay = self.retry_delay * (2 ** (retry_count - 1))
-                
-                self.logger.warning(f"任务 {task.name} 将在 {retry_delay} 秒后重试 (第 {retry_count} 次)")
-                
-                # 创建重试任务
-                retry_job = {
-                    'task': task,
-                    'next_run': datetime.now() + timedelta(seconds=retry_delay),
-                    'priority': self.priority_manager.calculate_priority(task) + 10,  # 降低优先级
-                    'retry_count': retry_count
-                }
-                
-                await self.job_queue.put(retry_job)
-                
-            else:
-                # 达到最大重试次数，标记为失败
-                task.set_status('error')
-                task.error_count = task.error_count + 1 if hasattr(task, 'error_count') else 1
-                task.last_error = datetime.now()
-                task.last_error_message = str(error)
+        """
+        处理任务失败
 
-                # 更新任务状态
+        使用渐进式退避策略：
+        - 第1次失败: 30秒后重试
+        - 第2次失败: 60秒后重试
+        - 第3次失败: 120秒后重试
+        - ...以此类推（每次翻倍）
+        - 当退避时间达到或超过任务间隔时，使用任务间隔
+        """
+        try:
+            # 更新错误计数
+            task.error_count = getattr(task, 'error_count', 0) + 1
+            task.last_error = datetime.now()
+            task.last_error_message = str(error)
+            task.set_status('error')
+
+            # 计算退避时间
+            retry_interval = self._calculate_error_backoff(task.error_count, task.interval)
+
+            # 更新任务状态到存储
+            self.storage.update_task(task.id, {
+                'status': 'error',
+                'error_count': task.error_count,
+                'last_error': task.last_error.isoformat(),
+                'last_error_message': task.last_error_message
+            })
+
+            # 记录错误日志
+            self.logger.warning(
+                f"任务 {task.name} (ID: {task.id}) 执行失败\n"
+                f"  错误次数: {task.error_count}\n"
+                f"  错误信息: {task.last_error_message}\n"
+                f"  下次重试: {retry_interval}秒后 ({retry_interval/60:.1f}分钟)"
+            )
+
+            # 发送错误通知（带频率控制）
+            if self._should_send_error_notification(task):
+                await self.notification_service.send_error_notification(
+                    task=task,
+                    error_message=str(error)
+                )
+                # 更新错误通知跟踪字段
+                task.last_error_notification = datetime.now()
+                task.error_notification_count = getattr(task, 'error_notification_count', 0) + 1
                 self.storage.update_task(task.id, {
-                    'status': 'error',
-                    'error_count': task.error_count,
-                    'last_error': task.last_error.isoformat(),
-                    'last_error_message': task.last_error_message
+                    'last_error_notification': task.last_error_notification.isoformat(),
+                    'error_notification_count': task.error_notification_count
                 })
 
-                # 记录详细错误日志
-                self.logger.error(
-                    f"任务 {task.name} (ID: {task.id}) 执行失败\n"
-                    f"  错误次数: {task.error_count}\n"
-                    f"  错误信息: {task.last_error_message}\n"
-                    f"  将在下次检查周期自动重试（使用指数退避策略）"
-                )
+            # 调度下次重试
+            await self._schedule_task_with_delay(task, retry_interval)
 
-                # 发送错误通知（带频率控制）
-                if self._should_send_error_notification(task):
-                    await self.notification_service.send_error_notification(
-                        task=task,
-                        error_message=str(error)
-                    )
-                    # 更新错误通知跟踪字段
-                    task.last_error_notification = datetime.now()
-                    task.error_notification_count = getattr(task, 'error_notification_count', 0) + 1
-                    self.storage.update_task(task.id, {
-                        'last_error_notification': task.last_error_notification.isoformat(),
-                        'error_notification_count': task.error_notification_count
-                    })
-
-                # 自动重新调度error任务（使用指数退避）
-                retry_interval = self._calculate_error_backoff(task.error_count)
-                await self._schedule_task_with_delay(task, retry_interval)
-                
         except Exception as e:
             self.logger.error(f"处理任务失败时出错: {e}")
     

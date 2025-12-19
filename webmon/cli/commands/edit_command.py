@@ -61,6 +61,9 @@ class EditCommand(Command):
             # 显示修改后的任务
             self._show_task_info(task)
 
+            # 通知调度器立即重启该任务
+            self._notify_task_restart(task['id'])
+
             return True
 
         except Exception as e:
@@ -132,6 +135,11 @@ class EditCommand(Command):
         if self.args.enable is not None:
             updates['enabled'] = (task.get('enabled', True), self.args.enable)
 
+        # AI提示词
+        if getattr(self.args, 'ai_prompt', None) is not None:
+            old_prompt = task.get('ai_prompt', '')
+            updates['ai_prompt'] = (old_prompt, self.args.ai_prompt)
+
         return updates
 
     def _apply_updates(self, task: Dict[str, Any], updates: Dict[str, tuple]) -> bool:
@@ -190,6 +198,13 @@ class EditCommand(Command):
 
         print(f"   状态: {'启用' if task.get('enabled', True) else '禁用'}")
 
+        ai_prompt = task.get('ai_prompt', '')
+        if ai_prompt:
+            display_prompt = ai_prompt[:50] + '...' if len(ai_prompt) > 50 else ai_prompt
+            print(f"   AI提示词: {display_prompt}")
+        else:
+            print(f"   AI提示词: (使用全局默认)")
+
     def validate_args(self) -> bool:
         """验证参数"""
         if not self.args.task_id:
@@ -204,7 +219,8 @@ class EditCommand(Command):
             self.args.interval is not None,
             self.args.timeout is not None,
             self.args.selector is not None,
-            self.args.enable is not None
+            self.args.enable is not None,
+            getattr(self.args, 'ai_prompt', None) is not None
         ])
 
         if not has_changes:
@@ -223,3 +239,34 @@ class EditCommand(Command):
             return False
 
         return True
+
+    def _notify_task_restart(self, task_id: str):
+        """
+        通知调度器立即重启指定任务
+
+        通过创建一个信号文件来通知正在运行的调度器，
+        调度器会检测到这个文件并立即重新调度该任务。
+        """
+        try:
+            # 检查调度器是否正在运行
+            pid_file = Path("webmon.pid")
+            if not pid_file.exists():
+                self.logger.debug("调度器未运行，跳过重启通知")
+                return
+
+            # 创建重启信号目录（如果不存在）
+            signal_dir = Path("data/.restart_signals")
+            signal_dir.mkdir(parents=True, exist_ok=True)
+
+            # 创建该任务的重启信号文件
+            signal_file = signal_dir / f"{task_id}.restart"
+            from datetime import datetime
+            signal_file.write_text(f"restart_requested_at={datetime.now().isoformat()}")
+
+            self.logger.info(f"已发送任务重启信号: {task_id}")
+            print(f"🔄 已通知调度器立即重启任务")
+
+        except Exception as e:
+            self.logger.warning(f"发送任务重启信号失败: {e}")
+            print(f"⚠️  无法通知调度器重启任务，新配置将在下次调度扫描时生效")
+

@@ -118,10 +118,10 @@ class StatusCommand(Command):
             for task in tasks:
                 status = task.status or 'unknown'
                 status_counts[status] = status_counts.get(status, 0) + 1
-                
+
                 if task.enabled:
                     enabled_count += 1
-                    total_interval += task.interval
+                    total_interval += task.interval  # 秒
             
             # 计算平均检测间隔
             avg_interval = total_interval / enabled_count if enabled_count > 0 else 0
@@ -441,7 +441,7 @@ class StatusCommand(Command):
         print(f"   总任务数: {tasks_info['total']}")
         print(f"   启用任务: {tasks_info['enabled']} | 禁用任务: {tasks_info['disabled']}")
         if tasks_info['enabled'] > 0:
-            print(f"   平均检测间隔: {tasks_info['average_interval']} 分钟")
+            print(f"   平均检测间隔: {tasks_info['average_interval']} 秒")
 
         # 显示任务状态统计
         status_breakdown = tasks_info.get('status_breakdown', {})
@@ -501,7 +501,7 @@ class StatusCommand(Command):
         
         # 监控设置
         settings = config_info['monitor_settings']
-        print(f"   默认间隔: {settings['default_interval']} 分钟")
+        print(f"   默认间隔: {settings['default_interval']} 秒")
         print(f"   最大并发: {settings['max_concurrent']} 任务")
         print(f"   相似度阈值: {settings['similarity_threshold']}")
         print()
@@ -550,7 +550,7 @@ class StatusCommand(Command):
                 print(f"\n{enabled_icon} {status_icon} [{task.id[:8]}] {task.name}")
                 print(f"   URL: {task.url}")
                 print(f"   状态: {task.status or 'unknown'} | 启用: {'是' if task.enabled else '否'}")
-                print(f"   间隔: {task.interval}分钟 | 超时: {task.timeout}ms")
+                print(f"   间隔: {task.interval}秒 | 超时: {task.timeout}ms")
                 if task.last_check:
                     print(f"   最后检测: {task.last_check.isoformat()[:19]}")
                 if task.last_change:

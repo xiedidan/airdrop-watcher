@@ -33,7 +33,7 @@ class DiscordPlatform(NotificationPlatform):
         
         # 可选配置
         self.embed_color = 0x00ff00  # 绿色
-        self.include_timestamp = True
+        self.include_timestamp = False  # 不显示底部时间戳，避免时区问题
         self.include_footer = True
         self.footer_text = "WebMon - 网页监控工具"
         self.footer_icon = "https://cdn.discordapp.com/embed/avatars/0.png"
@@ -51,7 +51,7 @@ class DiscordPlatform(NotificationPlatform):
             
             # 获取可选配置
             self.embed_color = self.config.get("embed_color", 0x00ff00)
-            self.include_timestamp = self.config.get("include_timestamp", True)
+            self.include_timestamp = self.config.get("include_timestamp", False)  # 默认不显示，避免时区问题
             self.include_footer = self.config.get("include_footer", True)
             self.footer_text = self.config.get("footer_text", "WebMon - 网页监控工具")
             self.footer_icon = self.config.get("footer_icon", "https://cdn.discordapp.com/embed/avatars/0.png")
@@ -220,10 +220,17 @@ class DiscordPlatform(NotificationPlatform):
         embed = {
             "title": notification.title,
             "description": notification.content,
-            "color": color,
-            "timestamp": notification.timestamp.isoformat() if self.include_timestamp else None,
-            "url": notification.url if notification.url else None
+            "color": color
         }
+
+        # 添加URL（如果有）
+        if notification.url:
+            embed["url"] = notification.url
+
+        # 添加时间戳（Discord会自动转换为用户本地时间，但需要UTC时间）
+        # 默认禁用，因为本地时间转UTC会导致显示错误
+        if self.include_timestamp:
+            embed["timestamp"] = notification.timestamp.isoformat()
         
         # 添加作者信息
         embed["author"] = {

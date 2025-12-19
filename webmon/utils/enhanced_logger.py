@@ -54,6 +54,10 @@ FILE_FORMAT = (
 _log_level_cache = {}
 _log_level_lock = threading.Lock()
 
+# 全局标记：loguru 是否已初始化
+_loguru_initialized = False
+_loguru_init_lock = threading.Lock()
+
 
 class EnhancedLogger:
     """增强版日志管理器"""
@@ -126,93 +130,103 @@ class EnhancedLogger:
     
     def _setup_loguru_logger(self) -> bool:
         """设置loguru日志系统"""
+        global _loguru_initialized
+
         if not LOGURU_AVAILABLE:
             return False
-            
-        try:
-            log_dir = self._setup_log_directory()
-            level = self._config.get("level", DEFAULT_LOG_LEVEL)
-            rotation_config = self._config.get("rotation", {})
-            format_config = self._config.get("format", {})
-            
-            # 配置日志级别
-            loguru_logger.remove()  # 移除默认handler
-            
-            # 控制台handler
-            if "console" in self._config.get("handlers", []):
-                console_format = format_config.get("console", CONSOLE_FORMAT)
-                loguru_logger.add(
-                    sys.stderr,
-                    level=level,
-                    format=console_format,
-                    backtrace=True,
-                    diagnose=True
-                )
-            
-            # 文件handler
-            if "file" in self._config.get("handlers", []):
-                file_format = format_config.get("file", FILE_FORMAT)
-                log_file = log_dir / f"webmon_{{time:YYYY-MM-DD}}.log"
-                
-                # 根据轮转类型设置参数
-                rotation_type = rotation_config.get("type", "time")
-                
-                if rotation_type == "size":
-                    max_size = rotation_config.get("max_size", DEFAULT_MAX_BYTES)
-                    backup_count = rotation_config.get("backup_count", DEFAULT_BACKUP_COUNT)
-                    
+
+        # 检查是否已经初始化过
+        with _loguru_init_lock:
+            if _loguru_initialized:
+                # 已经初始化，直接返回成功
+                return True
+
+            try:
+                log_dir = self._setup_log_directory()
+                level = self._config.get("level", DEFAULT_LOG_LEVEL)
+                rotation_config = self._config.get("rotation", {})
+                format_config = self._config.get("format", {})
+
+                # 配置日志级别
+                loguru_logger.remove()  # 移除默认handler
+
+                # 控制台handler
+                if "console" in self._config.get("handlers", []):
+                    console_format = format_config.get("console", CONSOLE_FORMAT)
                     loguru_logger.add(
-                        str(log_dir / "webmon.log"),
+                        sys.stderr,
                         level=level,
-                        format=file_format,
-                        rotation=max_size,
-                        retention=backup_count,
-                        compression="zip" if self._config.get("compression") else None,
-                        enqueue=True  # 线程安全
+                        format=console_format,
+                        backtrace=True,
+                        diagnose=True
                     )
-                else:  # time based
-                    loguru_logger.add(
-                        str(log_file),
-                        level=level,
-                        format=file_format,
-                        rotation="1 day",
-                        retention=f"{rotation_config.get('retention_days', DEFAULT_RETENTION_DAYS)} days",
-                        compression="zip" if self._config.get("compression") else None,
-                        enqueue=True
-                    )
-            
-            # 错误文件handler
-            if "error_file" in self._config.get("handlers", []):
-                error_format = format_config.get("file", FILE_FORMAT)
-                
-                if rotation_type == "size":
-                    max_size = rotation_config.get("max_size", DEFAULT_MAX_BYTES)
-                    
-                    loguru_logger.add(
-                        str(log_dir / "webmon_error.log"),
-                        level="ERROR",
-                        format=error_format,
-                        rotation=max_size,
-                        retention=backup_count,
-                        compression="zip" if self._config.get("compression") else None,
-                        enqueue=True
-                    )
-                else:
-                    loguru_logger.add(
-                        str(log_dir / f"webmon_error_{{time:YYYY-MM-DD}}.log"),
-                        level="ERROR",
-                        format=error_format,
-                        rotation="1 day",
-                        retention=f"{rotation_config.get('retention_days', DEFAULT_RETENTION_DAYS)} days",
-                        compression="zip" if self._config.get("compression") else None,
-                        enqueue=True
-                    )
-            
-            return True
-            
-        except Exception as e:
-            print(f"设置loguru日志系统失败: {e}")
-            return False
+
+                # 文件handler
+                if "file" in self._config.get("handlers", []):
+                    file_format = format_config.get("file", FILE_FORMAT)
+                    log_file = log_dir / f"webmon_{{time:YYYY-MM-DD}}.log"
+
+                    # 根据轮转类型设置参数
+                    rotation_type = rotation_config.get("type", "time")
+
+                    if rotation_type == "size":
+                        max_size = rotation_config.get("max_size", DEFAULT_MAX_BYTES)
+                        backup_count = rotation_config.get("backup_count", DEFAULT_BACKUP_COUNT)
+
+                        loguru_logger.add(
+                            str(log_dir / "webmon.log"),
+                            level=level,
+                            format=file_format,
+                            rotation=max_size,
+                            retention=backup_count,
+                            compression="zip" if self._config.get("compression") else None,
+                            enqueue=True  # 线程安全
+                        )
+                    else:  # time based
+                        loguru_logger.add(
+                            str(log_file),
+                            level=level,
+                            format=file_format,
+                            rotation="1 day",
+                            retention=f"{rotation_config.get('retention_days', DEFAULT_RETENTION_DAYS)} days",
+                            compression="zip" if self._config.get("compression") else None,
+                            enqueue=True
+                        )
+
+                # 错误文件handler
+                if "error_file" in self._config.get("handlers", []):
+                    error_format = format_config.get("file", FILE_FORMAT)
+
+                    if rotation_type == "size":
+                        max_size = rotation_config.get("max_size", DEFAULT_MAX_BYTES)
+
+                        loguru_logger.add(
+                            str(log_dir / "webmon_error.log"),
+                            level="ERROR",
+                            format=error_format,
+                            rotation=max_size,
+                            retention=backup_count,
+                            compression="zip" if self._config.get("compression") else None,
+                            enqueue=True
+                        )
+                    else:
+                        loguru_logger.add(
+                            str(log_dir / f"webmon_error_{{time:YYYY-MM-DD}}.log"),
+                            level="ERROR",
+                            format=error_format,
+                            rotation="1 day",
+                            retention=f"{rotation_config.get('retention_days', DEFAULT_RETENTION_DAYS)} days",
+                            compression="zip" if self._config.get("compression") else None,
+                            enqueue=True
+                        )
+
+                # 标记为已初始化
+                _loguru_initialized = True
+                return True
+
+            except Exception as e:
+                print(f"设置loguru日志系统失败: {e}")
+                return False
     
     def _setup_standard_logger(self) -> bool:
         """设置标准库日志系统"""
@@ -342,21 +356,26 @@ class EnhancedLogger:
     
     def update_config(self, new_config: Dict[str, Any]) -> bool:
         """更新日志配置"""
+        global _loguru_initialized
+
         try:
             with self._lock:
                 self._config.update(new_config)
-                
+
                 # 重新设置logger
                 if self._logger:
                     # 清除现有配置
                     if LOGURU_AVAILABLE and hasattr(self._logger, 'remove'):
                         self._logger.remove()
+                        # 重置全局初始化标记，允许重新配置
+                        with _loguru_init_lock:
+                            _loguru_initialized = False
                     elif hasattr(self._logger, 'handlers'):
                         self._logger.handlers.clear()
-                
+
                 # 重新设置
                 return self.setup_logger()
-                
+
         except Exception as e:
             print(f"更新日志配置失败: {e}")
             return False

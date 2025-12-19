@@ -2,6 +2,7 @@
 通知服务模块
 
 提供统一的通知服务接口，管理多个推送平台。
+支持AI智能分析变化内容。
 """
 
 import asyncio
@@ -13,15 +14,16 @@ from .base_platform import NotificationManager, Notification
 from .template_engine import TemplateEngine
 from ..config import ConfigManager
 from ..exceptions import NotificationError
+from ..ai import AIAnalysisService, AIConfig
 
 
 class NotificationService:
     """通知服务类"""
-    
+
     def __init__(self, config_manager: Optional[ConfigManager] = None):
         """
         初始化通知服务
-        
+
         Args:
             config_manager: 配置管理器
         """
@@ -29,9 +31,31 @@ class NotificationService:
         self.notification_manager = NotificationManager(self.config_manager)
         self.template_engine = TemplateEngine()
         self.logger = logging.getLogger(__name__)
-        
+
+        # 初始化AI分析服务
+        self._ai_service = None
+        self._init_ai_service()
+
         # 从配置中加载平台设置
         self._load_platform_configs()
+
+    def _init_ai_service(self):
+        """初始化AI分析服务"""
+        try:
+            # 使用resolve_env=True解析环境变量占位符
+            ai_config_dict = self.config_manager.get_ai_config(resolve_env=True)
+            if ai_config_dict:
+                ai_config = AIConfig.from_dict(ai_config_dict)
+                self._ai_service = AIAnalysisService(config=ai_config)
+                if self._ai_service.is_enabled():
+                    self.logger.info(f"AI分析服务已启用 (模型: {ai_config.model})")
+                else:
+                    self.logger.debug("AI分析服务未启用或配置无效")
+            else:
+                self.logger.debug("未找到AI配置")
+        except Exception as e:
+            self.logger.warning(f"初始化AI分析服务失败: {e}")
+            self._ai_service = None
     
     def _load_platform_configs(self):
         """从配置文件中加载平台配置"""
@@ -135,13 +159,14 @@ class NotificationService:
             self.logger.error(f"发送通知失败: {e}")
             raise NotificationError(f"发送通知失败: {e}")
     
-    async def send_change_notification(self, task_name: str, url: str, 
+    async def send_change_notification(self, task_name: str, url: str,
                                      change_summary: str, similarity: Optional[float] = None,
                                      detection_time: Optional[float] = None,
-                                     platforms: Optional[List[str]] = None) -> Dict[str, bool]:
+                                     platforms: Optional[List[str]] = None,
+                                     ai_summary: Optional[str] = None) -> Dict[str, bool]:
         """
         发送变化检测通知
-        
+
         Args:
             task_name: 任务名称
             url: 监控URL
@@ -149,7 +174,8 @@ class NotificationService:
             similarity: 相似度（可选）
             detection_time: 检测耗时（可选）
             platforms: 目标平台列表
-            
+            ai_summary: AI分析摘要（可选）
+
         Returns:
             各平台发送结果
         """
@@ -160,29 +186,137 @@ class NotificationService:
                 url=url,
                 change_summary=change_summary,
                 similarity=similarity,
-                detection_time=detection_time
+                detection_time=detection_time,
+                ai_summary=ai_summary
             )
-            
+
             # 发送通知
             results = await self.send_notification(
-                title="🎯 网页变化检测通知",
+                title="🎯 网页变化检测",
                 content=message_content,
                 platforms=platforms,
                 urgency="high",
-                url=url,
-                extra_data={
-                    "task_name": task_name,
-                    "similarity": similarity,
-                    "detection_time": detection_time
-                }
+                url=url
             )
-            
+
             return results
-            
+
         except Exception as e:
             self.logger.error(f"发送变化通知失败: {e}")
             raise NotificationError(f"发送变化通知失败: {e}")
-    
+
+    async def send_webpage_change_notification(self, task, check_result, change_details,
+                                               platforms: Optional[List[str]] = None) -> bool:
+        """
+        发送网页变化通知（供 execution_engine 调用）
+
+        Args:
+            task: 任务对象
+            check_result: 检测结果
+            change_details: 变化详情
+            platforms: 目标平台列表
+
+        Returns:
+            是否发送成功
+        """
+        try:
+            # 构建变化摘要
+            change_summary = change_details.change_summary if change_details else "检测到变化"
+
+            # 获取相似度
+            similarity = getattr(change_details, 'similarity', None)
+            if similarity is not None:
+                similarity = round(similarity * 100, 1)
+
+            # AI分析变化内容
+            ai_summary = None
+            ai_failed = False
+            if self._ai_service and self._ai_service.is_enabled():
+                self.logger.debug(f"AI服务已启用，开始分析变化 - task={task.id}")
+                ai_summary = await self._analyze_changes_with_ai(task, check_result, change_details)
+                if ai_summary:
+                    self.logger.debug(f"AI分析结果: {ai_summary[:200]}...")
+                else:
+                    self.logger.debug("AI分析未返回结果")
+                    ai_failed = True  # 标记AI调用失败
+            else:
+                self.logger.debug(f"AI服务未启用 - ai_service={self._ai_service is not None}, enabled={self._ai_service.is_enabled() if self._ai_service else False}")
+
+            # 如果AI调用失败，添加提示信息
+            if ai_failed and not ai_summary:
+                ai_summary = "[AI分析暂时不可用]"
+
+            # 发送通知
+            results = await self.send_change_notification(
+                task_name=task.name,
+                url=task.url,
+                change_summary=change_summary,
+                similarity=similarity,
+                platforms=platforms,
+                ai_summary=ai_summary
+            )
+
+            # 返回是否有任何平台发送成功
+            return any(results.values()) if results else False
+
+        except Exception as e:
+            self.logger.error(f"发送网页变化通知失败: {e}")
+            return False
+
+    async def _analyze_changes_with_ai(self, task, check_result, change_details) -> Optional[str]:
+        """
+        使用AI分析变化内容
+
+        Args:
+            task: 任务对象
+            check_result: 检测结果（包含完整diff）
+            change_details: 变化详情
+
+        Returns:
+            AI分析摘要，失败返回None
+        """
+        try:
+            # 构建变化信息字典 - 只传递完整的diff内容给AI
+            changes = {}
+
+            # 优先使用 check_result 中的完整 unified_diff
+            if check_result and hasattr(check_result, 'content_diff') and check_result.content_diff:
+                changes['diff'] = check_result.content_diff
+            elif change_details and hasattr(change_details, 'change_summary'):
+                # 回退到 change_summary
+                changes['diff'] = change_details.change_summary
+
+            # 提取新旧内容（如果有）
+            if change_details:
+                if hasattr(change_details, 'old_content'):
+                    changes['old_content'] = str(change_details.old_content)[:2000] if change_details.old_content else ''
+                if hasattr(change_details, 'new_content'):
+                    changes['new_content'] = str(change_details.new_content)[:2000] if change_details.new_content else ''
+
+            # 调用AI分析
+            result = await self._ai_service.analyze_changes(
+                task_id=task.id,
+                task_name=task.name,
+                url=task.url,
+                description=getattr(task, 'description', '') or '',
+                changes=changes,
+                custom_prompt=getattr(task, 'ai_prompt', '') or ''
+            )
+
+            if result.success and result.summary:
+                self.logger.info(f"AI分析成功: task={task.id}, tokens={result.tokens_used}")
+                return result.summary
+            else:
+                self.logger.warning(f"AI分析未返回有效结果: {result.error_message}")
+                return None
+
+        except asyncio.TimeoutError:
+            self.logger.warning(f"AI分析超时: task={task.id}")
+            return None
+        except Exception as e:
+            self.logger.warning(f"AI分析失败: task={task.id}, error={e}")
+            return None
+
     async def send_system_notification(self, title: str, content: str,
                                      notification_type: str = "info",
                                      platforms: Optional[List[str]] = None,
@@ -302,10 +436,10 @@ class NotificationService:
     def get_platform_info(self, platform_name: str) -> Optional[Dict[str, Any]]:
         """
         获取平台信息
-        
+
         Args:
             platform_name: 平台名称
-            
+
         Returns:
             平台信息，不存在返回None
         """
@@ -313,3 +447,50 @@ class NotificationService:
         if platform:
             return platform.get_platform_info()
         return None
+
+    async def send_error_notification(self, task, error_message: str,
+                                      platforms: Optional[List[str]] = None) -> Dict[str, bool]:
+        """
+        发送任务错误通知
+
+        Args:
+            task: 任务对象
+            error_message: 错误信息
+            platforms: 目标平台列表
+
+        Returns:
+            各平台发送结果
+        """
+        try:
+            # 构建错误通知内容
+            task_name = getattr(task, 'name', '未知任务')
+            task_url = getattr(task, 'url', '')
+            error_count = getattr(task, 'error_count', 1)
+
+            content = (
+                f"任务名称: {task_name}\n"
+                f"监控URL: {task_url}\n"
+                f"错误次数: {error_count}\n"
+                f"错误信息: {error_message}\n"
+                f"时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+
+            # 发送通知
+            results = await self.send_notification(
+                title="⚠️ 任务执行错误",
+                content=content,
+                platforms=platforms,
+                urgency="high",
+                url=task_url,
+                extra_data={
+                    "task_name": task_name,
+                    "error_message": error_message,
+                    "error_count": error_count
+                }
+            )
+
+            return results
+
+        except Exception as e:
+            self.logger.error(f"发送错误通知失败: {e}")
+            return {}

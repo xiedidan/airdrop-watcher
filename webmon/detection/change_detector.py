@@ -105,12 +105,12 @@ class ChangeDetector:
             self.logger.error(f"初始化检测器失败: {e}")
             raise DetectionError(f"初始化检测器失败: {e}")
     
-    async def detect_changes(self, task_id: str, url: str, old_content: str, new_content: str, 
-                           selectors: Optional[List[str]] = None, 
+    async def detect_changes(self, task_id: str, url: str, old_content: str, new_content: str,
+                           selectors: Optional[List[str]] = None,
                            algorithm: str = "auto") -> Dict[str, Any]:
         """
         检测内容变化
-        
+
         Args:
             task_id: 任务ID
             url: URL
@@ -118,16 +118,35 @@ class ChangeDetector:
             new_content: 新内容
             selectors: CSS选择器列表（可选）
             algorithm: 使用的算法（"auto", "hash", "similarity", "structured", "composite"）
-            
+
         Returns:
             检测结果字典
-            
+
         Raises:
             DetectionError: 检测失败
         """
         try:
             start_time = datetime.now()
             self.logger.info(f"开始检测变化 - 任务: {task_id}, URL: {url}, 算法: {algorithm}")
+
+            # DEBUG: 输出对比内容信息
+            old_len = len(old_content) if old_content else 0
+            new_len = len(new_content) if new_content else 0
+            self.logger.debug(f"[DEBUG-DETECT] 任务ID: {task_id}")
+            self.logger.debug(f"[DEBUG-DETECT] 旧内容长度: {old_len} 字符")
+            self.logger.debug(f"[DEBUG-DETECT] 新内容长度: {new_len} 字符")
+
+            # 输出旧内容摘要
+            if old_content:
+                old_preview = old_content[:1500] if len(old_content) > 1500 else old_content
+                self.logger.debug(f"[DEBUG-DETECT] 旧内容预览 (前1500字符):\n{old_preview}")
+            else:
+                self.logger.debug(f"[DEBUG-DETECT] 旧内容为空（首次检测）")
+
+            # 输出新内容摘要
+            if new_content:
+                new_preview = new_content[:1500] if len(new_content) > 1500 else new_content
+                self.logger.debug(f"[DEBUG-DETECT] 新内容预览 (前1500字符):\n{new_preview}")
             
             # 验证输入
             if not old_content or not new_content:
@@ -173,7 +192,16 @@ class ChangeDetector:
             
             # 缓存结果
             self._cache_result(cache_key, result)
-            
+
+            # DEBUG: 输出检测结果详情
+            self.logger.debug(f"[DEBUG-DETECT] 检测结果 - 变化: {result.get('changed', False)}")
+            self.logger.debug(f"[DEBUG-DETECT] 变化类型: {result.get('change_type', 'unknown')}")
+            if 'similarity' in result:
+                self.logger.debug(f"[DEBUG-DETECT] 相似度: {result.get('similarity', 'N/A')}")
+            if 'old_hash' in result and 'new_hash' in result:
+                self.logger.debug(f"[DEBUG-DETECT] 旧哈希: {result.get('old_hash')}")
+                self.logger.debug(f"[DEBUG-DETECT] 新哈希: {result.get('new_hash')}")
+
             self.logger.info(f"变化检测完成 - 任务: {task_id}, 变化: {result.get('changed', False)}, "
                            f"算法: {algorithm}, 耗时: {result.get('detection_time', 0):.3f}秒")
             
@@ -217,8 +245,20 @@ class ChangeDetector:
                     # 长内容：使用组合检测
                     detailed_result = await self._composite_detection(old_content, new_content, selectors)
 
+                # 保存哈希检测的changed状态（哈希不同就是变化）
+                hash_changed = hash_result["changed"]
+
                 # 合并结果
                 hash_result.update(detailed_result)
+
+                # 关键修复：哈希检测到变化，强制设置changed=True
+                # 因为哈希不同意味着内容确实发生了变化
+                if hash_changed:
+                    hash_result["changed"] = True
+                    if not detailed_result.get("changed", False):
+                        hash_result["change_type"] = "content_change"
+                        self.logger.debug(f"相似度较高({detailed_result.get('similarity', 'N/A')})但哈希不同，仍标记为变化")
+
                 hash_result["algorithm"] = "auto"
                 hash_result["auto_reason"] = "hash_changed_with_smart_detection"
             else:

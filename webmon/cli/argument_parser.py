@@ -53,6 +53,7 @@ class ArgumentParser:
         self._add_status_command()
         self._add_test_command()
         self._add_history_command()
+        self._add_config_command()
     
     def _add_global_options(self):
         """添加全局选项"""
@@ -159,6 +160,13 @@ class ArgumentParser:
             help=f'页面加载超时时间 (秒，默认: {self.default_timeout})'
         )
 
+        parser_add.add_argument(
+            '--ai-prompt',
+            type=str,
+            default='',
+            help='自定义AI分析提示词，为空则使用全局默认提示词 (可选)'
+        )
+
     def _add_edit_command(self):
         """添加edit命令"""
         parser_edit = self.subparsers.add_parser(
@@ -219,6 +227,12 @@ class ArgumentParser:
             '--enable',
             type=lambda x: x.lower() in ['true', 'yes', '1', 'on'],
             help='启用/禁用任务 (true/false)'
+        )
+
+        parser_edit.add_argument(
+            '--ai-prompt',
+            type=str,
+            help='修改AI分析提示词 (使用空字符串清除，恢复使用全局默认)'
         )
 
         parser_edit.add_argument(
@@ -360,28 +374,132 @@ class ArgumentParser:
             help='查看变化历史',
             description='查看网页变化检测的历史记录'
         )
-        
+
         parser_history.add_argument(
             'task_id',
             nargs='?',
             type=str,
             help='查看指定任务的历史记录'
         )
-        
+
         parser_history.add_argument(
-            '--limit', 
+            '--all', '-a',
+            action='store_true',
+            dest='show_all',
+            help='显示所有记录（默认只显示有变化的记录）'
+        )
+
+        parser_history.add_argument(
+            '--limit',
             '-l',
             type=int,
             default=10,
             help='显示最近N条记录 (默认: 10)'
         )
-        
+
         parser_history.add_argument(
-            '--format', 
+            '--format',
             '-f',
             choices=['table', 'json'],
             default='table',
             help='输出格式 (默认: table)'
+        )
+
+    def _add_config_command(self):
+        """添加config命令"""
+        parser_config = self.subparsers.add_parser(
+            'config',
+            help='配置管理',
+            description='查看和修改WebMon配置'
+        )
+
+        # 添加config子命令
+        config_subparsers = parser_config.add_subparsers(
+            dest='config_subcommand',
+            title='配置子命令',
+            help='配置操作'
+        )
+
+        # config show 子命令
+        config_subparsers.add_parser(
+            'show',
+            help='显示所有配置'
+        )
+
+        # config ai 子命令
+        parser_ai = config_subparsers.add_parser(
+            'ai',
+            help='AI分析配置'
+        )
+
+        # AI子命令
+        ai_subparsers = parser_ai.add_subparsers(
+            dest='ai_action',
+            title='AI操作',
+            help='AI配置操作'
+        )
+
+        # ai enable
+        ai_subparsers.add_parser(
+            'enable',
+            help='启用AI分析'
+        )
+
+        # ai disable
+        ai_subparsers.add_parser(
+            'disable',
+            help='禁用AI分析'
+        )
+
+        # ai test
+        ai_subparsers.add_parser(
+            'test',
+            help='测试AI连接'
+        )
+
+        # ai set
+        parser_ai_set = ai_subparsers.add_parser(
+            'set',
+            help='设置AI配置项'
+        )
+
+        parser_ai_set.add_argument(
+            '--api-url',
+            dest='api_url',
+            type=str,
+            help='API地址 (如: https://api.deepseek.com/v1)'
+        )
+
+        parser_ai_set.add_argument(
+            '--api-key',
+            dest='api_key',
+            type=str,
+            help='API Key'
+        )
+
+        parser_ai_set.add_argument(
+            '--model',
+            type=str,
+            help='模型名称 (如: deepseek-reasoner, gpt-4)'
+        )
+
+        parser_ai_set.add_argument(
+            '--max-tokens',
+            dest='max_tokens',
+            type=int,
+            help='最大Token数'
+        )
+
+        parser_ai_set.add_argument(
+            '--temperature',
+            type=float,
+            help='温度参数 (0.0-2.0)'
+        )
+
+        parser_ai_set.add_argument(
+            '--timeout',
+            type=int,
+            help='超时时间 (秒)'
         )
     
     def parse_args(self, args: Optional[list] = None):

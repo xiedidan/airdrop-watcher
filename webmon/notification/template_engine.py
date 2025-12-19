@@ -461,15 +461,15 @@ class TemplateEngine:
             change_template = MessageTemplate(
                 template_id="webpage_change",
                 name="网页变化通知",
-                template_content="""🎯 网页变化检测通知
+                template_content="""
+📍 网页变化检测 - ${task_name}
+⏰ ${timestamp}
+${ai_summary_info}
 
-📍 任务: ${task_name}
-🔗 URL: ${url}
-📝 变化: ${change_summary}
-📊 相似度: ${similarity}%
-⏰ 检测时间: ${detection_time}
+变化: ${change_summary}
 
-${url_info}""",
+相似度: ${similarity}%
+链接: ${url}""",
                 template_type="simple",
                 description="用于网页内容变化检测的通知模板",
                 variables=[
@@ -478,7 +478,9 @@ ${url_info}""",
                     {"name": "change_summary", "type": "string", "required": True},
                     {"name": "similarity", "type": "number", "required": False},
                     {"name": "detection_time", "type": "string", "required": True},
-                    {"name": "has_url", "type": "boolean", "required": False}
+                    {"name": "has_url", "type": "boolean", "required": False},
+                    {"name": "ai_summary", "type": "string", "required": False},
+                    {"name": "ai_summary_info", "type": "string", "required": False}
                 ]
             )
             
@@ -630,14 +632,15 @@ ${details_info}""",
         
         return engine.validate_template(template_content)
     
-    def create_change_notification_template(self, task_name: str, url: str, 
+    def create_change_notification_template(self, task_name: str, url: str,
                                           change_summary: str, similarity: Optional[float] = None,
                                           detection_time: Optional[float] = None,
                                           old_content: Optional[str] = None,
-                                          new_content: Optional[str] = None) -> str:
+                                          new_content: Optional[str] = None,
+                                          ai_summary: Optional[str] = None) -> str:
         """
         创建网页变化通知模板
-        
+
         Args:
             task_name: 任务名称
             url: 网页URL
@@ -646,7 +649,8 @@ ${details_info}""",
             detection_time: 检测耗时（可选）
             old_content: 旧内容（可选）
             new_content: 新内容（可选）
-            
+            ai_summary: AI分析摘要（可选）
+
         Returns:
             渲染后的消息内容
         """
@@ -655,7 +659,12 @@ ${details_info}""",
             similarity_info = f"📊 相似度: {similarity:.1f}%\n" if similarity is not None else ""
             detection_time_info = f"⏱️ 检测耗时: {detection_time:.3f}秒\n" if detection_time is not None else ""
             url_info = f"\n🔗 查看详情: {url}" if url else ""
-            
+
+            # AI摘要
+            ai_summary_info = ""
+            if ai_summary:
+                ai_summary_info = f"\n🤖 AI摘要:\n{ai_summary}"
+
             context = {
                 "task_name": task_name,
                 "url": url,
@@ -665,29 +674,33 @@ ${details_info}""",
                 "similarity_info": similarity_info,
                 "detection_time_info": detection_time_info,
                 "url_info": url_info,
+                "ai_summary": ai_summary or "",
+                "ai_summary_info": ai_summary_info,
                 "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             }
-            
+
             return self.render_template("webpage_change", context)
-            
+
         except Exception as e:
             self.logger.error(f"创建变化通知模板失败: {e}")
             # 返回备用格式
-            return self._create_fallback_change_message(task_name, url, change_summary, similarity, detection_time)
+            return self._create_fallback_change_message(task_name, url, change_summary, similarity, detection_time, ai_summary)
     
-    def _create_fallback_change_message(self, task_name: str, url: str, 
+    def _create_fallback_change_message(self, task_name: str, url: str,
                                       change_summary: str, similarity: Optional[float] = None,
-                                      detection_time: Optional[float] = None) -> str:
+                                      detection_time: Optional[float] = None,
+                                      ai_summary: Optional[str] = None) -> str:
         """
         创建备用的变化通知消息
-        
+
         Args:
             task_name: 任务名称
             url: 网页URL
             change_summary: 变化摘要
             similarity: 相似度（可选）
             detection_time: 检测耗时（可选）
-            
+            ai_summary: AI分析摘要（可选）
+
         Returns:
             消息内容
         """
@@ -699,13 +712,18 @@ ${details_info}""",
             f"📝 变化: {change_summary}",
             f"⏰ 检测时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         ]
-        
+
         if similarity is not None:
             lines.insert(4, f"📊 相似度: {similarity:.1f}%")
-        
+
         if detection_time is not None:
             lines.append(f"⏱️ 检测耗时: {detection_time:.3f}秒")
-        
+
+        if ai_summary:
+            lines.insert(3, "")
+            lines.insert(4, "🤖 AI摘要:")
+            lines.insert(5, ai_summary)
+
         return "\n".join(lines)
     
     def create_system_notification_template(self, title: str, content: str, 

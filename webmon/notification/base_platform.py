@@ -428,7 +428,12 @@ class NotificationManager:
                 results[platform_name] = False
                 self.logger.debug(f"推送平台已禁用: {platform_name}")
                 continue
-            
+
+            if not platform.is_configured:
+                results[platform_name] = False
+                self.logger.info(f"推送平台未配置: {platform_name}")
+                continue
+
             try:
                 success = await platform.send_notification(notification)
                 results[platform_name] = success

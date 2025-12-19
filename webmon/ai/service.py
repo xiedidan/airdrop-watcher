@@ -8,6 +8,7 @@ AI分析服务
 import os
 import time
 import asyncio
+import random
 from typing import Dict, Any, Optional
 from datetime import datetime
 
@@ -102,38 +103,28 @@ class AIAnalysisService:
 
         lines = []
 
-        # 处理diff内容
+        # 处理diff内容 - 直接输出完整diff，不添加额外统计信息
         if 'diff' in changes:
             diff = changes['diff']
             if isinstance(diff, str):
-                lines.append(f"内容差异:\n{diff[:2000]}")  # 限制长度
+                lines.append(diff[:3000])  # 限制长度
             elif isinstance(diff, dict):
                 for key, value in diff.items():
                     lines.append(f"- {key}: {value}")
 
-        # 处理added/removed内容
-        if 'added' in changes:
-            added = changes['added']
-            if added:
-                lines.append(f"新增内容:\n{added[:1000]}")
+        # 处理added/removed内容（仅当没有diff时）
+        if not lines:
+            if 'added' in changes:
+                added = changes['added']
+                if added:
+                    lines.append(f"新增内容:\n{added[:1500]}")
 
-        if 'removed' in changes:
-            removed = changes['removed']
-            if removed:
-                lines.append(f"删除内容:\n{removed[:1000]}")
+            if 'removed' in changes:
+                removed = changes['removed']
+                if removed:
+                    lines.append(f"删除内容:\n{removed[:1500]}")
 
-        # 处理similarity
-        if 'similarity' in changes:
-            lines.append(f"相似度: {changes['similarity']:.2%}")
-
-        # 处理其他字段
-        for key, value in changes.items():
-            if key in ('diff', 'added', 'removed', 'similarity', 'old_content', 'new_content'):
-                continue
-            if isinstance(value, dict) and 'old' in value and 'new' in value:
-                lines.append(f"- {key}: {value['old']} → {value['new']}")
-            elif value:
-                lines.append(f"- {key}: {value}")
+        # 不添加相似度等统计信息，让AI自己分析
 
         return '\n'.join(lines) if lines else "检测到变化但无详细信息"
 
@@ -143,7 +134,8 @@ class AIAnalysisService:
         task_name: str,
         url: str,
         description: str,
-        changes: Dict[str, Any]
+        changes: Dict[str, Any],
+        custom_prompt: str = ""
     ) -> AIAnalysisResult:
         """
         分析变化内容
@@ -154,6 +146,7 @@ class AIAnalysisService:
             url: 监控URL
             description: 任务描述
             changes: 变化详情字典
+            custom_prompt: 自定义用户提示词模板，为空则使用全局默认
 
         Returns:
             AIAnalysisResult: 分析结果
@@ -172,9 +165,16 @@ class AIAnalysisService:
             # 格式化变化内容
             changes_text = self.format_changes(changes)
 
+            self.logger.debug(f"AI分析开始 - task={task_id}, task_name={task_name}")
+            self.logger.debug(f"变化内容格式化结果:\n{changes_text[:1000]}...")
+
+            # 选择提示词模板：优先使用自定义提示词，否则使用全局默认
+            prompt_template = custom_prompt.strip() if custom_prompt and custom_prompt.strip() else self.config.user_prompt_template
+            using_custom = bool(custom_prompt and custom_prompt.strip())
+
             # 渲染用户提示词
             user_prompt = self.render_prompt(
-                template=self.config.user_prompt_template,
+                template=prompt_template,
                 task_name=task_name,
                 url=url,
                 description=description,
@@ -183,11 +183,21 @@ class AIAnalysisService:
                 new_content=changes.get('new_content', '')
             )
 
-            # 调用AI API
-            result = await self._call_api(
+            self.logger.debug(f"系统提示词:\n{self.config.system_prompt}")
+            self.logger.debug(f"用户提示词 ({'自定义' if using_custom else '全局默认'}):\n{user_prompt}")
+
+            # 调用AI API (带重试)
+            self.logger.debug(f"调用AI API - model={self.config.model}, api_url={self.config.api_url}")
+            result = await self._call_api_with_retry(
                 system_prompt=self.config.system_prompt,
                 user_prompt=user_prompt
             )
+
+            self.logger.debug(f"AI API响应: success={result.get('success')}, tokens={result.get('tokens_used', 0)}")
+            if result.get('success'):
+                self.logger.debug(f"AI返回内容:\n{result.get('content', '')}")
+            else:
+                self.logger.debug(f"AI错误信息: {result.get('error', '')}")
 
             latency = time.time() - start_time
 
@@ -229,6 +239,99 @@ class AIAnalysisService:
                 error_message=str(e),
                 model=self.config.model
             )
+
+    def _calculate_retry_delay(self, attempt: int) -> float:
+        """
+        计算退避重试延迟时间（指数退避 + 随机抖动）
+
+        Args:
+            attempt: 当前重试次数 (从1开始)
+
+        Returns:
+            延迟时间（秒）
+        """
+        # 指数退避: base_delay * 2^(attempt-1)
+        delay = self.config.retry_base_delay * (2 ** (attempt - 1))
+        # 限制最大延迟
+        delay = min(delay, self.config.retry_max_delay)
+        # 添加随机抖动 (±20%)
+        jitter = delay * 0.2 * (random.random() * 2 - 1)
+        return max(0, delay + jitter)
+
+    def _is_retryable_error(self, error: str) -> bool:
+        """
+        判断错误是否可以重试
+
+        Args:
+            error: 错误信息
+
+        Returns:
+            是否可重试
+        """
+        retryable_keywords = [
+            '超时', 'timeout', 'Timeout',
+            '连接', 'connect', 'Connect',
+            '网络', 'network', 'Network',
+            '502', '503', '504', '429',
+            'rate limit', 'Rate limit',
+            'temporarily', 'Temporarily',
+            'overloaded', 'Overloaded',
+        ]
+        return any(keyword in error for keyword in retryable_keywords)
+
+    async def _call_api_with_retry(
+        self,
+        system_prompt: str,
+        user_prompt: str
+    ) -> Dict[str, Any]:
+        """
+        带退避重试的API调用
+
+        Args:
+            system_prompt: 系统提示词
+            user_prompt: 用户提示词
+
+        Returns:
+            包含success, content, tokens_used, error的字典
+        """
+        last_error = None
+        max_attempts = self.config.retry_attempts + 1  # 包含首次尝试
+
+        for attempt in range(1, max_attempts + 1):
+            result = await self._call_api(system_prompt, user_prompt)
+
+            if result['success']:
+                # 成功，检查内容是否为空
+                content = result.get('content', '')
+                if content and content.strip():
+                    if attempt > 1:
+                        self.logger.info(f"AI API调用在第{attempt}次尝试后成功")
+                    return result
+                else:
+                    # 内容为空，可能是token不足，视为可重试错误
+                    last_error = "AI返回内容为空（可能是token不足）"
+                    self.logger.warning(f"AI API返回空内容 (attempt {attempt}/{max_attempts})")
+            else:
+                last_error = result.get('error', '未知错误')
+                self.logger.warning(f"AI API调用失败: {last_error} (attempt {attempt}/{max_attempts})")
+
+            # 检查是否还有重试机会
+            if attempt < max_attempts:
+                # 检查错误是否可重试
+                if not self._is_retryable_error(last_error):
+                    self.logger.info(f"错误不可重试，放弃重试: {last_error}")
+                    break
+
+                # 计算延迟并等待
+                delay = self._calculate_retry_delay(attempt)
+                self.logger.info(f"将在 {delay:.1f} 秒后重试 (attempt {attempt + 1}/{max_attempts})")
+                await asyncio.sleep(delay)
+
+        # 所有重试都失败
+        return {
+            'success': False,
+            'error': f"重试{max_attempts}次后仍失败: {last_error}"
+        }
 
     async def _call_api(
         self,

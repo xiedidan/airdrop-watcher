@@ -16,9 +16,13 @@ from datetime import datetime
 # 尝试导入增强日志系统
 try:
     from webmon.utils.enhanced_logger import EnhancedLogger, get_logger as get_enhanced_logger
+    from webmon.utils.enhanced_logger import _loguru_initialized as _enhanced_loguru_initialized
+    from webmon.utils.enhanced_logger import _loguru_init_lock as _enhanced_loguru_init_lock
     ENHANCED_LOGGER_AVAILABLE = True
 except ImportError:
     ENHANCED_LOGGER_AVAILABLE = False
+    _enhanced_loguru_initialized = False
+    _enhanced_loguru_init_lock = threading.Lock()
 
 # 尝试导入loguru，如果失败则使用标准库logging
 try:
@@ -83,14 +87,23 @@ def get_logger(
     
     # 确保日志目录存在
     Path(log_dir).mkdir(parents=True, exist_ok=True)
-    
+
     if LOGURU_AVAILABLE:
+        # 检查是否已经被增强版日志系统初始化过
+        # 如果是，直接返回已配置的 loguru_logger，避免重复添加 handler
+        if ENHANCED_LOGGER_AVAILABLE:
+            from webmon.utils.enhanced_logger import _loguru_initialized, _loguru_init_lock
+            with _loguru_init_lock:
+                if _loguru_initialized:
+                    # 增强版已初始化，直接返回绑定了名称的 logger
+                    return loguru_logger.bind(name=name)
+
         # 使用loguru
         logger = loguru_logger.bind(name=name)
-        
+
         # 移除默认的handler
         logger.remove()
-        
+
         # 添加控制台输出
         logger.add(
             sys.stdout,
@@ -205,65 +218,117 @@ def get_logger(
 
 
 def setup_global_logger(
-    level: str = "INFO", 
-    log_dir: str = "./logs",
+    level: str = None,
+    log_dir: str = None,
     max_bytes: int = None,
     backup_count: int = None,
     rotation_type: str = "time"
 ) -> None:
     """
     设置全局logger配置 - 增强版，支持按大小轮转
-    
+
     Args:
-        level: 日志级别
-        log_dir: 日志文件目录
+        level: 日志级别，默认从环境变量LOG_LEVEL读取
+        log_dir: 日志文件目录，默认从环境变量LOGS_DIR读取
         max_bytes: 最大文件大小(字节)，用于大小轮转
         backup_count: 备份文件数量
         rotation_type: 轮转类型("time"或"size")
     """
+    # 从环境变量读取默认值
+    if level is None:
+        level = os.getenv('LOG_LEVEL', 'INFO')
+
+    if log_dir is None:
+        log_dir = os.getenv('LOGS_DIR', './logs')
+
     # 确保日志目录存在
     Path(log_dir).mkdir(parents=True, exist_ok=True)
-    
+
     # 设置默认参数
     if max_bytes is None:
         max_bytes = int(os.getenv('LOG_MAX_BYTES', str(10*1024*1024)))  # 10MB
-    
+
     if backup_count is None:
         backup_count = int(os.getenv('LOG_BACKUP_COUNT', '5'))
-    
+
     if LOGURU_AVAILABLE:
-        # 使用loguru
-        loguru_logger.remove()
-        
-        # 添加控制台输出
-        loguru_logger.add(
-            sys.stdout,
-            level=level,
-            format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
-            colorize=True
-        )
-        
-        # 添加文件输出 - 支持按大小轮转
-        if rotation_type == "size":
-            # 按大小轮转
-            loguru_logger.add(
-                os.path.join(log_dir, "webmon.log"),
-                level=level,
-                format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
-                rotation=max_bytes,
-                retention=backup_count,
-                compression="zip"
-            )
+        # 检查是否已经初始化，避免重复配置
+        if ENHANCED_LOGGER_AVAILABLE:
+            from webmon.utils.enhanced_logger import _loguru_initialized, _loguru_init_lock
+            import webmon.utils.enhanced_logger as enhanced_logger_module
+            with _loguru_init_lock:
+                if _loguru_initialized:
+                    # 已经初始化，跳过
+                    return
+
+                # 使用loguru
+                loguru_logger.remove()
+
+                # 添加控制台输出
+                loguru_logger.add(
+                    sys.stdout,
+                    level=level,
+                    format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
+                    colorize=True
+                )
+
+                # 添加文件输出 - 支持按大小轮转
+                if rotation_type == "size":
+                    # 按大小轮转
+                    loguru_logger.add(
+                        os.path.join(log_dir, "webmon.log"),
+                        level=level,
+                        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
+                        rotation=max_bytes,
+                        retention=backup_count,
+                        compression="zip"
+                    )
+                else:
+                    # 按时间轮转（原有逻辑）
+                    loguru_logger.add(
+                        os.path.join(log_dir, f"webmon_{{time:YYYY-MM-DD}}.log"),
+                        level=level,
+                        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
+                        rotation="1 day",
+                        retention="30 days",
+                        compression="zip"
+                    )
+
+                # 设置全局初始化标记，防止后续 get_logger 再次添加 handlers
+                enhanced_logger_module._loguru_initialized = True
         else:
-            # 按时间轮转（原有逻辑）
+            # 没有增强版日志模块，使用原有逻辑
+            loguru_logger.remove()
+
+            # 添加控制台输出
             loguru_logger.add(
-                os.path.join(log_dir, f"webmon_{{time:YYYY-MM-DD}}.log"),
+                sys.stdout,
                 level=level,
-                format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
-                rotation="1 day",
-                retention="30 days",
-                compression="zip"
+                format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
+                colorize=True
             )
+
+            # 添加文件输出 - 支持按大小轮转
+            if rotation_type == "size":
+                # 按大小轮转
+                loguru_logger.add(
+                    os.path.join(log_dir, "webmon.log"),
+                    level=level,
+                    format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
+                    rotation=max_bytes,
+                    retention=backup_count,
+                    compression="zip"
+                )
+            else:
+                # 按时间轮转（原有逻辑）
+                loguru_logger.add(
+                    os.path.join(log_dir, f"webmon_{{time:YYYY-MM-DD}}.log"),
+                    level=level,
+                    format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
+                    rotation="1 day",
+                    retention="30 days",
+                    compression="zip"
+                )
     else:
         # 使用标准库logging - 增强版，支持按大小轮转
         # 配置根logger

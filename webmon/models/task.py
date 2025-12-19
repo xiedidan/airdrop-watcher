@@ -17,11 +17,14 @@ class Task:
     name: str = ""
     description: str = ""  # 任务描述（用于AI分析上下文）
     selectors: List[str] = field(default_factory=list)
-    
+
     # 监控配置
     interval: int = 300  # 检测间隔（秒）
     timeout: int = 30000  # 超时时间（毫秒）
     enabled: bool = True  # 是否启用
+
+    # AI分析配置
+    ai_prompt: str = ""  # 自定义AI用户提示词，为空则使用全局默认
     
     # 时间戳
     created_at: datetime = field(default_factory=datetime.now)
@@ -59,6 +62,7 @@ class Task:
             'interval': self.interval,  # 秒
             'timeout': self.timeout,
             'enabled': self.enabled,
+            'ai_prompt': self.ai_prompt,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
             'last_check': self.last_check.isoformat() if self.last_check else None,

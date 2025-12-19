@@ -27,6 +27,7 @@ class AddCommand(Command):
             interval = self.args.interval
             timeout = self.args.timeout
             description = getattr(self.args, 'description', '') or ''
+            ai_prompt = getattr(self.args, 'ai_prompt', '') or ''
 
             self.logger.info(f"添加监控任务: {url}")
 
@@ -49,6 +50,7 @@ class AddCommand(Command):
                 "interval": interval,
                 "timeout": timeout,
                 "enabled": True,
+                "ai_prompt": ai_prompt,
                 "created_at": self._get_current_timestamp()
             }
 
@@ -65,6 +67,8 @@ class AddCommand(Command):
                 print(f"CSS选择器: {selector}")
             if description:
                 print(f"任务描述: {description}")
+            if ai_prompt:
+                print(f"AI提示词: {ai_prompt[:50]}..." if len(ai_prompt) > 50 else f"AI提示词: {ai_prompt}")
 
             return True
             
