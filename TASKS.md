@@ -1,8 +1,8 @@
 # WebMon 网页监控工具 - 任务看板
 
-> **最后更新**: 2025-12-18 10:10 | **更新人**: Claude
+> **最后更新**: 2025-12-18 10:40 | **更新人**: Claude
 > **项目阶段**: 阶段十二 - WebUI 开发
-> **进度**: 81% (56/82 任务)
+> **进度**: 82% (57/82 任务)
 
 ---
 
@@ -37,10 +37,6 @@
 **WebUI 开发 - 阶段十二核心任务**
 
 #### Phase 1: 基础框架 (MVP)
-
-- [ ] **#071** 实现监控控制 API `@无人认领` `预计:2h` `依赖:#069`
-  - 描述：实现 /api/monitor/status、start、stop 接口
-  - 验收：可通过 API 启动/停止监控，获取运行状态
 
 - [ ] **#072** 搭建 Vue 3 前端框架 `@无人认领` `预计:3h` `依赖:无`
   - 描述：初始化 frontend/ 目录，配置 Vite + Vue 3 + TypeScript + Naive UI
@@ -188,6 +184,14 @@
 ## ✅ 已完成 (DONE)
 
 ### 最近完成 (2025-12-18)
+
+- [x] **#071** 实现监控控制 API `@Claude` `完成:2025-12-18 10:40` ⏱️ 实际:0.5h
+  - 创建监控 Pydantic 数据模型 (schemas/monitor.py)
+  - 实现监控服务层 (services/monitor_service.py)，集成 TaskScheduler
+  - 实现监控 API 路由 (api/monitor.py)
+  - API 端点: GET /api/monitor/status, POST /api/monitor/start, POST /api/monitor/stop, GET /api/monitor/stats
+  - 支持监控器启动/停止/状态查询
+  - 所有 API 测试通过 ✅
 
 - [x] **#070** 实现任务管理 API `@Claude` `完成:2025-12-18 10:10` ⏱️ 实际:0.5h
   - 创建任务 Pydantic 数据模型 (schemas/task.py)
@@ -406,9 +410,9 @@ git push origin main
 ## 📈 统计信息
 
 **任务总数**: 82
-**已完成**: 56 (68%)
+**已完成**: 57 (70%)
 **进行中**: 0 (0%)
-**待办**: 26 (32%)
+**待办**: 25 (30%)
 **阻塞**: 0 (0%)
 
 **阶段完成度**:
@@ -416,7 +420,7 @@ git push origin main
 - 阶段九: 100% ✅
 - 阶段十: 40% ⚠️
 - 阶段十一 (AI分析): 83% ⚠️ (5/6)
-- 阶段十二 (WebUI): 13% 🚧 (2/16)
+- 阶段十二 (WebUI): 19% 🚧 (3/16)
 
 **测试覆盖率**:
 - 当前: ~20%
