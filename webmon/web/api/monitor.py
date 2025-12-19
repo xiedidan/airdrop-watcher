@@ -14,6 +14,7 @@ from webmon.web.schemas.monitor import (
     SchedulerStats,
 )
 from webmon.web.services.monitor_service import MonitorService, get_monitor_service
+from webmon.web.services.event_manager import broadcast_event, EventType
 
 router = APIRouter(prefix="/api/monitor", tags=["monitor"])
 
@@ -72,6 +73,13 @@ async def start_monitor(
         if result.get('status'):
             status = dict_to_monitor_status(result['status'])
 
+        # 广播监控启动事件
+        if result.get('success'):
+            await broadcast_event(EventType.MONITOR_STARTED, {
+                "message": result.get('message', '监控已启动'),
+                "status": result.get('status', {}),
+            })
+
         return MonitorActionResponse(
             success=result.get('success', False),
             message=result.get('message', ''),
@@ -101,6 +109,13 @@ async def stop_monitor(
         status = None
         if result.get('status'):
             status = dict_to_monitor_status(result['status'])
+
+        # 广播监控停止事件
+        if result.get('success'):
+            await broadcast_event(EventType.MONITOR_STOPPED, {
+                "message": result.get('message', '监控已停止'),
+                "status": result.get('status', {}),
+            })
 
         return MonitorActionResponse(
             success=result.get('success', False),

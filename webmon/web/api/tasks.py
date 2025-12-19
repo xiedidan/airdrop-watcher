@@ -16,6 +16,7 @@ from webmon.web.schemas.task import (
     TaskCheckResponse,
 )
 from webmon.web.services.task_service import TaskService, get_task_service
+from webmon.web.services.event_manager import broadcast_event, EventType
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
@@ -91,6 +92,13 @@ async def create_task(
     """创建新任务"""
     try:
         task = service.create_task(task_data.model_dump())
+
+        # 广播任务创建事件
+        await broadcast_event(EventType.TASK_CREATED, {
+            "task_id": task.get('id'),
+            "task_name": task.get('name'),
+        })
+
         return TaskActionResponse(
             success=True,
             message="任务创建成功",
@@ -118,6 +126,13 @@ async def update_task(
         # 只传递非None的字段
         updates = task_data.model_dump(exclude_none=True)
         task = service.update_task(task_id, updates)
+
+        # 广播任务更新事件
+        await broadcast_event(EventType.TASK_UPDATED, {
+            "task_id": task.get('id'),
+            "task_name": task.get('name'),
+        })
+
         return TaskActionResponse(
             success=True,
             message="任务更新成功",
@@ -147,6 +162,13 @@ async def delete_task(
             raise HTTPException(status_code=404, detail=f"任务不存在: {task_id}")
 
         service.delete_task(task_id)
+
+        # 广播任务删除事件
+        await broadcast_event(EventType.TASK_DELETED, {
+            "task_id": task.get('id'),
+            "task_name": task.get('name'),
+        })
+
         return TaskActionResponse(
             success=True,
             message="任务删除成功",
@@ -173,6 +195,13 @@ async def enable_task(
     """启用任务"""
     try:
         task = service.enable_task(task_id)
+
+        # 广播任务启用事件
+        await broadcast_event(EventType.TASK_ENABLED, {
+            "task_id": task.get('id'),
+            "task_name": task.get('name'),
+        })
+
         return TaskActionResponse(
             success=True,
             message="任务已启用",
@@ -197,6 +226,13 @@ async def disable_task(
     """禁用任务"""
     try:
         task = service.disable_task(task_id)
+
+        # 广播任务禁用事件
+        await broadcast_event(EventType.TASK_DISABLED, {
+            "task_id": task.get('id'),
+            "task_name": task.get('name'),
+        })
+
         return TaskActionResponse(
             success=True,
             message="任务已禁用",
@@ -220,9 +256,39 @@ async def check_task_now(
 ) -> TaskCheckResponse:
     """立即执行任务检测"""
     try:
+        # 广播检测开始事件
+        await broadcast_event(EventType.CHECK_STARTED, {
+            "task_id": task_id,
+        })
+
         result = await service.check_task_now(task_id)
+
+        # 广播检测完成事件
+        if result.get('success'):
+            if result.get('has_change'):
+                await broadcast_event(EventType.CHANGE_DETECTED, {
+                    "task_id": task_id,
+                    "task_name": result.get('task_name', ''),
+                    "change_summary": result.get('change_summary', ''),
+                })
+            else:
+                await broadcast_event(EventType.CHECK_COMPLETED, {
+                    "task_id": task_id,
+                    "task_name": result.get('task_name', ''),
+                })
+        else:
+            await broadcast_event(EventType.CHECK_FAILED, {
+                "task_id": task_id,
+                "error": result.get('error', '检测失败'),
+            })
+
         return TaskCheckResponse(**result)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
+        # 广播检测失败事件
+        await broadcast_event(EventType.CHECK_FAILED, {
+            "task_id": task_id,
+            "error": str(e),
+        })
         raise HTTPException(status_code=500, detail=f"执行检测失败: {str(e)}")
