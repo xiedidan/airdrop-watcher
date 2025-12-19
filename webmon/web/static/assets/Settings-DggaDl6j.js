@@ -1,1 +1,0 @@
-import{d as s,J as a,P as t,Q as o,R as e,K as n,a3 as r}from"./index-ComyWp1J.js";import{N as c,a as _}from"./Card-DTIctG9o.js";const i={class:"settings"},d=s({__name:"Settings",setup(p){return(m,f)=>(n(),a("div",i,[t(e(c),{title:"系统设置"},{default:o(()=>[t(e(_),{description:"系统设置功能开发中"})]),_:1})]))}}),x=r(d,[["__scopeId","data-v-d06e8aa7"]]);export{x as default};

@@ -126,9 +126,79 @@ export interface HistoryItem {
 }
 
 /**
+ * 历史记录条目（来自后端API）
+ */
+export interface HistoryEntry {
+  id: string
+  type: 'check_result' | 'change_details'
+  task_id: string
+  url: string
+  timestamp: string
+  data: Record<string, any>
+}
+
+/**
+ * 检测结果
+ */
+export interface CheckResult {
+  id: string
+  task_id: string
+  url: string
+  timestamp: string | null
+  success: boolean
+  content_hash: string
+  content_size: number
+  load_time: number
+  changed: boolean
+  change_type: string
+  content_diff: string | null
+  added_lines: number
+  removed_lines: number
+  modified_lines: number
+  changes_summary: string | null
+  change_details: Record<string, any>[]
+  error_message: string | null
+  error_type: string | null
+  content_preview: string | null
+  status_code: number | null
+}
+
+/**
+ * 变化详情
+ */
+export interface ChangeDetails {
+  id: string
+  task_id: string
+  url: string
+  timestamp: string | null
+  change_type: string
+  change_summary: string | null
+  old_content: string | null
+  new_content: string | null
+  diff: string | null
+  ai_summary: string | null
+}
+
+/**
  * 历史记录列表响应
  */
 export interface HistoryListResponse {
-  items: HistoryItem[]
+  items: HistoryEntry[]
   total: number
+  page: number
+  page_size: number
+  total_pages: number
+}
+
+/**
+ * 历史统计信息
+ */
+export interface HistoryStatistics {
+  total_entries: number
+  check_results: number
+  change_details: number
+  success_rate: number
+  change_rate: number
+  first_date: string | null
+  last_date: string | null
 }

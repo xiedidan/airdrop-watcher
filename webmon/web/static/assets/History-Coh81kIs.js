@@ -1,1 +1,0 @@
-import{d as s,J as a,P as t,Q as o,R as e,K as r,a3 as c}from"./index-ComyWp1J.js";import{N as _,a as n}from"./Card-DTIctG9o.js";const i={class:"history"},p=s({__name:"History",setup(d){return(m,f)=>(r(),a("div",i,[t(e(_),{title:"变化历史"},{default:o(()=>[t(e(n),{description:"变化历史功能开发中"})]),_:1})]))}}),h=c(p,[["__scopeId","data-v-ca18c8e1"]]);export{h as default};
