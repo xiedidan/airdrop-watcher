@@ -1,0 +1,56 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+ENV/
+env/
+.eggs/
+*.egg-info/
+*.egg
+.pytest_cache/
+.mypy_cache/
+
+# Node.js
+frontend/node_modules/
+frontend/dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 日志和数据（运行时生成）
+logs/
+*.log
+
+# 配置文件（运行时挂载）
+.env
+config/config.json
+data/history.json
+
+# 归档和临时文件
+archive/
+backup/
+*.bak
+*.tmp
+
+# 文档（非运行时必需）
+docs/
+*.md
+!README.md
+
+# Claude配置
+.claude/
+
+# 测试文件
+tests/
+webmon/tests/
