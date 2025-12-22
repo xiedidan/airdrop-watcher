@@ -8,10 +8,12 @@ from webmon.web.api.root import router as root_router
 from webmon.web.api.tasks import router as tasks_router
 from webmon.web.api.monitor import router as monitor_router
 from webmon.web.api.settings import router as settings_router
+from webmon.web.api.notification import router as notification_router
 
 __all__ = [
     'root_router',
     'tasks_router',
     'monitor_router',
     'settings_router',
+    'notification_router',
 ]

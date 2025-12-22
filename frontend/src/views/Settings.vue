@@ -39,7 +39,7 @@ import {
   SaveOutline,
   InformationCircleOutline,
 } from '@vicons/ionicons5'
-import { settingsApi } from '@/api'
+import { settingsApi, notificationApi } from '@/api'
 import type {
   AllSettings,
   MonitoringConfig,
@@ -51,6 +51,7 @@ import type {
   SchedulerConfig,
   PlatformInfo,
 } from '@/types'
+import type { PlatformTestResult } from '@/api'
 
 const message = useMessage()
 const dialog = useDialog()
@@ -58,6 +59,7 @@ const dialog = useDialog()
 // 加载状态
 const loading = ref(true)
 const saving = ref(false)
+const testingNotification = ref(false)
 
 // 当前活动标签
 const activeTab = ref('monitoring')
@@ -170,6 +172,38 @@ async function saveNotification() {
     message.error('保存失败')
   } finally {
     saving.value = false
+  }
+}
+
+// 测试通知
+async function testNotification(platform?: string) {
+  testingNotification.value = true
+  try {
+    const result = await notificationApi.test(platform)
+
+    if (result.success) {
+      message.success(result.message)
+    } else {
+      message.warning(result.message)
+    }
+
+    // 显示详细结果
+    if (result.results && result.results.length > 0) {
+      const details = result.results
+        .map((r: PlatformTestResult) => `${r.platform}: ${r.success ? '成功' : '失败'}${r.error ? ` - ${r.error}` : ''}`)
+        .join('\n')
+
+      dialog.info({
+        title: '通知测试结果',
+        content: details,
+        positiveText: '确定'
+      })
+    }
+  } catch (error) {
+    console.error('测试失败:', error)
+    message.error('测试通知失败')
+  } finally {
+    testingNotification.value = false
   }
 }
 
@@ -491,6 +525,18 @@ onMounted(() => {
                   </n-space>
                 </template>
 
+                <template #header-extra>
+                  <n-button
+                    size="small"
+                    type="primary"
+                    ghost
+                    :loading="testingNotification"
+                    @click.stop="testNotification(platform.name)"
+                  >
+                    测试
+                  </n-button>
+                </template>
+
                 <n-descriptions :column="1" bordered>
                   <n-descriptions-item label="启用状态">
                     {{ platform.enabled ? '已启用' : '未启用' }}
@@ -527,6 +573,13 @@ onMounted(() => {
                     <n-icon><SaveOutline /></n-icon>
                   </template>
                   保存
+                </n-button>
+                <n-button
+                  type="info"
+                  :loading="testingNotification"
+                  @click="testNotification()"
+                >
+                  测试所有平台
                 </n-button>
                 <n-button @click="resetSection('notification')">重置为默认值</n-button>
               </n-space>

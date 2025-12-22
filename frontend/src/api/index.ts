@@ -269,4 +269,66 @@ export const settingsApi = {
   },
 }
 
+/**
+ * 通知测试结果
+ */
+export interface PlatformTestResult {
+  platform: string
+  success: boolean
+  message: string
+  error?: string
+}
+
+/**
+ * 测试通知响应
+ */
+export interface TestNotificationResponse {
+  success: boolean
+  message: string
+  results: PlatformTestResult[]
+  total_platforms: number
+  success_count: number
+}
+
+/**
+ * 通知 API
+ */
+export const notificationApi = {
+  // 测试通知
+  async test(platform?: string, title?: string, message?: string): Promise<TestNotificationResponse> {
+    const response = await api.post<TestNotificationResponse>('/notification/test', {
+      platform,
+      title,
+      message
+    })
+    return response.data
+  },
+
+  // 测试所有平台
+  async testAll(): Promise<TestNotificationResponse> {
+    const response = await api.post<TestNotificationResponse>('/notification/test-all')
+    return response.data
+  },
+
+  // 获取可用平台
+  async getPlatforms(): Promise<{
+    enabled_platforms: string[]
+    configured_platforms: string[]
+    platform_status: Record<string, any>
+  }> {
+    const response = await api.get<ApiResponse<{
+      enabled_platforms: string[]
+      configured_platforms: string[]
+      platform_status: Record<string, any>
+    }>>('/notification/platforms')
+    return response.data.data
+  },
+
+  // 获取平台信息
+  async getPlatformInfo(platform: string): Promise<Record<string, any>> {
+    const response = await api.get<ApiResponse<Record<string, any>>>(`/notification/platforms/${platform}/info`)
+    return response.data.data
+  },
+}
+
 export default api
