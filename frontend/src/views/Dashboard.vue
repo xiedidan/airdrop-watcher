@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, computed } from 'vue'
+import { onMounted, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   NCard,
@@ -24,17 +24,17 @@ import {
   TimeOutline,
   FlashOutline,
   TrendingUpOutline,
+  WifiOutline,
 } from '@vicons/ionicons5'
 import { useMonitorStore } from '@/stores/monitor'
 import { useTaskStore } from '@/stores/task'
+import { useSSEStore } from '@/stores/sse'
 import type { Task } from '@/types'
 
 const router = useRouter()
 const monitorStore = useMonitorStore()
 const taskStore = useTaskStore()
-
-// 刷新间隔
-let refreshInterval: number | null = null
+const sseStore = useSSEStore()
 
 // 加载状态
 const isLoading = ref(true)
@@ -157,16 +157,9 @@ const goToHistory = () => {
   router.push('/history')
 }
 
+// 初始化加载数据（后续由 SSE 自动更新）
 onMounted(async () => {
   await loadData()
-  // 每30秒自动刷新
-  refreshInterval = window.setInterval(loadData, 30000)
-})
-
-onUnmounted(() => {
-  if (refreshInterval) {
-    clearInterval(refreshInterval)
-  }
 })
 </script>
 
@@ -175,8 +168,21 @@ onUnmounted(() => {
     <n-spin :show="isLoading">
       <!-- 顶部操作栏 -->
       <div class="dashboard-header">
-        <h2 class="page-title">仪表盘</h2>
-        <n-button quaternary circle @click="handleRefresh">
+        <n-space align="center">
+          <h2 class="page-title">仪表盘</h2>
+          <n-tooltip v-if="sseStore.isConnected" trigger="hover">
+            <template #trigger>
+              <n-tag type="success" size="small" round>
+                <template #icon>
+                  <n-icon><WifiOutline /></n-icon>
+                </template>
+                实时更新
+              </n-tag>
+            </template>
+            <span>SSE 实时连接已建立，数据将自动更新</span>
+          </n-tooltip>
+        </n-space>
+        <n-button quaternary circle @click="handleRefresh" :loading="isLoading">
           <template #icon>
             <n-icon><RefreshOutline /></n-icon>
           </template>

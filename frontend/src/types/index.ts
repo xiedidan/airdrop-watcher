@@ -202,3 +202,56 @@ export interface HistoryStatistics {
   first_date: string | null
   last_date: string | null
 }
+
+/**
+ * SSE 事件类型
+ */
+export const SSEEventType = {
+  // 连接事件
+  CONNECTED: 'connected',
+  HEARTBEAT: 'heartbeat',
+
+  // 监控状态事件
+  MONITOR_STARTED: 'monitor_started',
+  MONITOR_STOPPED: 'monitor_stopped',
+  MONITOR_STATUS: 'monitor_status',
+
+  // 任务事件
+  TASK_CREATED: 'task_created',
+  TASK_UPDATED: 'task_updated',
+  TASK_DELETED: 'task_deleted',
+  TASK_ENABLED: 'task_enabled',
+  TASK_DISABLED: 'task_disabled',
+
+  // 检测事件
+  CHECK_STARTED: 'check_started',
+  CHECK_COMPLETED: 'check_completed',
+  CHECK_FAILED: 'check_failed',
+  CHANGE_DETECTED: 'change_detected',
+
+  // 通知事件
+  NOTIFICATION_SENT: 'notification_sent',
+  NOTIFICATION_FAILED: 'notification_failed',
+} as const
+
+export type SSEEventTypeValue = typeof SSEEventType[keyof typeof SSEEventType]
+
+/**
+ * SSE 事件数据
+ */
+export interface SSEEventData {
+  timestamp: string
+  [key: string]: any
+}
+
+/**
+ * SSE 连接状态
+ */
+export const SSEConnectionState = {
+  CONNECTING: 'connecting',
+  CONNECTED: 'connected',
+  DISCONNECTED: 'disconnected',
+  ERROR: 'error',
+} as const
+
+export type SSEConnectionStateValue = typeof SSEConnectionState[keyof typeof SSEConnectionState]

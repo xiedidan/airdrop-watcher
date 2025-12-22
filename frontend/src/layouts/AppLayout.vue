@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { h, ref, computed } from 'vue'
+import { h, ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { NLayout, NLayoutHeader, NLayoutContent, NLayoutFooter, NMenu, NIcon, NSpace, NButton, NBadge, NText } from 'naive-ui'
+import { NLayout, NLayoutHeader, NLayoutContent, NLayoutFooter, NMenu, NIcon, NSpace, NButton, NBadge, NText, NTooltip } from 'naive-ui'
 import {
   HomeOutline,
   ListOutline,
@@ -9,12 +9,18 @@ import {
   SettingsOutline,
   PlayCircleOutline,
   StopCircleOutline,
+  WifiOutline,
+  CloudOfflineOutline,
 } from '@vicons/ionicons5'
 import { useMonitorStore } from '@/stores/monitor'
+import { useSSEStore } from '@/stores/sse'
+import { SSEConnectionState } from '@/types'
+import type { SSEConnectionStateValue } from '@/types'
 
 const router = useRouter()
 const route = useRoute()
 const monitorStore = useMonitorStore()
+const sseStore = useSSEStore()
 
 // 菜单项
 const menuOptions = [
@@ -59,6 +65,38 @@ const handleToggleMonitor = async () => {
 
 // 初始化获取状态
 monitorStore.fetchStatus()
+
+// SSE 连接状态信息
+const sseStatusText = computed(() => {
+  switch (sseStore.connectionState) {
+    case SSEConnectionState.CONNECTED:
+      return '实时连接'
+    case SSEConnectionState.CONNECTING:
+      return '连接中...'
+    case SSEConnectionState.ERROR:
+      return '连接错误'
+    default:
+      return '未连接'
+  }
+})
+
+const sseStatusType = computed(() => {
+  switch (sseStore.connectionState) {
+    case SSEConnectionState.CONNECTED:
+      return 'success'
+    case SSEConnectionState.CONNECTING:
+      return 'warning'
+    case SSEConnectionState.ERROR:
+      return 'error'
+    default:
+      return 'default'
+  }
+})
+
+// 初始化 SSE 连接
+onMounted(() => {
+  sseStore.init()
+})
 </script>
 
 <template>
@@ -115,6 +153,19 @@ monitorStore.fetchStatus()
           <n-text depth="3">
             变化: {{ monitorStore.totalChanges }}
           </n-text>
+          <n-text depth="3">|</n-text>
+          <n-tooltip trigger="hover">
+            <template #trigger>
+              <n-text :type="sseStatusType" style="cursor: pointer;">
+                <n-icon size="14" style="vertical-align: middle; margin-right: 4px;">
+                  <WifiOutline v-if="sseStore.isConnected" />
+                  <CloudOfflineOutline v-else />
+                </n-icon>
+                {{ sseStatusText }}
+              </n-text>
+            </template>
+            <span>SSE 事件流 - 接收事件: {{ sseStore.eventCount }}</span>
+          </n-tooltip>
         </n-space>
         <n-text depth="3">WebMon v1.0.0</n-text>
       </n-space>

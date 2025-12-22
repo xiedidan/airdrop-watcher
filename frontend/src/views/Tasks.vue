@@ -35,13 +35,16 @@ import {
   FlashOutline,
   SearchOutline,
   LinkOutline,
+  WifiOutline,
 } from '@vicons/ionicons5'
 import { useTaskStore } from '@/stores/task'
+import { useSSEStore } from '@/stores/sse'
 import type { Task, TaskCreate, TaskUpdate } from '@/types'
 
 const message = useMessage()
 const dialog = useDialog()
 const taskStore = useTaskStore()
+const sseStore = useSSEStore()
 
 // 加载状态
 const isLoading = ref(true)
@@ -449,8 +452,7 @@ const handleCheckNow = async (task: Task) => {
     } else {
       message.info('未检测到变化')
     }
-    // 刷新任务列表
-    await taskStore.fetchTasks()
+    // SSE 会自动更新任务列表，此处不需要手动刷新
   } else {
     message.error('检测请求失败')
   }
@@ -478,7 +480,20 @@ onMounted(async () => {
         <!-- 标题和操作栏 -->
         <template #header>
           <n-space justify="space-between" align="center" style="width: 100%">
-            <span class="page-title">任务管理</span>
+            <n-space align="center">
+              <span class="page-title">任务管理</span>
+              <n-tooltip v-if="sseStore.isConnected" trigger="hover">
+                <template #trigger>
+                  <n-tag type="success" size="small" round>
+                    <template #icon>
+                      <n-icon><WifiOutline /></n-icon>
+                    </template>
+                    实时更新
+                  </n-tag>
+                </template>
+                <span>任务状态将自动同步更新</span>
+              </n-tooltip>
+            </n-space>
             <n-space>
               <n-button type="primary" @click="handleAdd">
                 <template #icon>
