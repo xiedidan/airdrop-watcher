@@ -17,6 +17,7 @@ from webmon.web.api.tasks import router as tasks_router
 from webmon.web.api.monitor import router as monitor_router
 from webmon.web.api.events import router as events_router
 from webmon.web.api.history import router as history_router
+from webmon.web.api.settings import router as settings_router
 
 
 # 全局应用实例
@@ -77,6 +78,7 @@ def create_app() -> FastAPI:
     app.include_router(monitor_router)
     app.include_router(events_router)
     app.include_router(history_router)
+    app.include_router(settings_router)
 
     # 挂载静态文件（如果存在）
     static_dir = os.path.join(os.path.dirname(__file__), "static")
