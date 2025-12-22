@@ -17,6 +17,7 @@ from webmon.cli.commands.status_command import StatusCommand
 from webmon.cli.commands.history_command import HistoryCommand
 from webmon.cli.commands.test_command import TestCommand
 from webmon.cli.commands.config_command import ConfigCommand
+from webmon.cli.commands.web_command import WebCommand
 from webmon.cli.command import Command
 
 
@@ -39,6 +40,7 @@ class CommandFactory:
             'history': HistoryCommand,
             'test': TestCommand,
             'config': ConfigCommand,
+            'web': WebCommand,
         }
     
     def create_command(self, command_name: str, args: Namespace) -> Optional[Command]:

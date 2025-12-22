@@ -54,6 +54,7 @@ class ArgumentParser:
         self._add_test_command()
         self._add_history_command()
         self._add_config_command()
+        self._add_web_command()
     
     def _add_global_options(self):
         """添加全局选项"""
@@ -532,3 +533,38 @@ class ArgumentParser:
     def print_help(self):
         """打印帮助信息"""
         self.parser.print_help()
+
+    def _add_web_command(self):
+        """添加web命令"""
+        parser_web = self.subparsers.add_parser(
+            'web',
+            help='启动 WebUI 服务',
+            description='启动 WebMon Web 管理界面'
+        )
+
+        parser_web.add_argument(
+            '--port',
+            '-p',
+            type=int,
+            default=8000,
+            help='服务端口 (默认: 8000)'
+        )
+
+        parser_web.add_argument(
+            '--host',
+            type=str,
+            default='0.0.0.0',
+            help='监听地址 (默认: 0.0.0.0)'
+        )
+
+        parser_web.add_argument(
+            '--no-browser',
+            action='store_true',
+            help='不自动打开浏览器'
+        )
+
+        parser_web.add_argument(
+            '--reload',
+            action='store_true',
+            help='开发模式，自动重载代码变更'
+        )
