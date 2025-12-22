@@ -1,5 +1,28 @@
 import axios from 'axios'
-import type { ApiResponse, TaskListResponse, Task, TaskCreate, TaskUpdate, MonitorStatus, SchedulerStats, HistoryListResponse, HistoryEntry, ChangeDetails, HistoryStatistics } from '@/types'
+import type {
+  ApiResponse,
+  TaskListResponse,
+  Task,
+  TaskCreate,
+  TaskUpdate,
+  MonitorStatus,
+  SchedulerStats,
+  HistoryListResponse,
+  HistoryEntry,
+  ChangeDetails,
+  HistoryStatistics,
+  AllSettings,
+  SettingsResponse,
+  SettingsSectionResponse,
+  PlatformInfo,
+  MonitoringConfig,
+  DetectionConfig,
+  NotificationConfig,
+  AIConfig,
+  StorageConfig,
+  LoggingConfig,
+  SchedulerConfig,
+} from '@/types'
 
 const api = axios.create({
   baseURL: '/api',
@@ -161,6 +184,88 @@ export const historyApi = {
       params: days ? { days } : undefined
     })
     return response.data
+  },
+}
+
+/**
+ * 配置管理 API
+ */
+export const settingsApi = {
+  // 获取所有配置
+  async getAll(maskSecrets: boolean = true): Promise<AllSettings> {
+    const response = await api.get<SettingsResponse>('/settings', {
+      params: { mask_secrets: maskSecrets }
+    })
+    return response.data.data
+  },
+
+  // 获取指定配置段
+  async getSection<T = Record<string, any>>(section: string, maskSecrets: boolean = true): Promise<T> {
+    const response = await api.get<SettingsSectionResponse>(`/settings/${section}`, {
+      params: { mask_secrets: maskSecrets }
+    })
+    return response.data.data as T
+  },
+
+  // 更新监控配置
+  async updateMonitoring(config: Partial<MonitoringConfig>): Promise<MonitoringConfig> {
+    const response = await api.put<ApiResponse<MonitoringConfig>>('/settings/monitoring', config)
+    return response.data.data
+  },
+
+  // 更新检测配置
+  async updateDetection(config: Partial<DetectionConfig>): Promise<DetectionConfig> {
+    const response = await api.put<ApiResponse<DetectionConfig>>('/settings/detection', config)
+    return response.data.data
+  },
+
+  // 更新通知配置
+  async updateNotification(config: Partial<NotificationConfig>): Promise<NotificationConfig> {
+    const response = await api.put<ApiResponse<NotificationConfig>>('/settings/notification', config)
+    return response.data.data
+  },
+
+  // 获取通知平台列表
+  async getNotificationPlatforms(): Promise<PlatformInfo[]> {
+    const response = await api.get<ApiResponse<{ platforms: PlatformInfo[] }>>('/settings/notification/platforms')
+    return response.data.data.platforms
+  },
+
+  // 更新单个平台配置
+  async updatePlatformConfig(platform: string, config: Record<string, any>, enable?: boolean): Promise<void> {
+    await api.put(`/settings/notification/platforms/${platform}`, config, {
+      params: enable !== undefined ? { enable } : undefined
+    })
+  },
+
+  // 更新 AI 配置
+  async updateAI(config: Partial<AIConfig>): Promise<AIConfig> {
+    const response = await api.put<ApiResponse<AIConfig>>('/settings/ai', config)
+    return response.data.data
+  },
+
+  // 更新存储配置
+  async updateStorage(config: Partial<StorageConfig>): Promise<StorageConfig> {
+    const response = await api.put<ApiResponse<StorageConfig>>('/settings/storage', config)
+    return response.data.data
+  },
+
+  // 更新日志配置
+  async updateLogging(config: Partial<LoggingConfig>): Promise<LoggingConfig> {
+    const response = await api.put<ApiResponse<LoggingConfig>>('/settings/logging', config)
+    return response.data.data
+  },
+
+  // 更新调度器配置
+  async updateScheduler(config: Partial<SchedulerConfig>): Promise<SchedulerConfig> {
+    const response = await api.put<ApiResponse<SchedulerConfig>>('/settings/scheduler', config)
+    return response.data.data
+  },
+
+  // 重置配置段
+  async resetSection(section: string): Promise<Record<string, any>> {
+    const response = await api.post<ApiResponse<Record<string, any>>>(`/settings/${section}/reset`)
+    return response.data.data
   },
 }
 

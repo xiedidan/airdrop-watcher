@@ -255,3 +255,163 @@ export const SSEConnectionState = {
 } as const
 
 export type SSEConnectionStateValue = typeof SSEConnectionState[keyof typeof SSEConnectionState]
+
+// ==================== Settings 配置类型 ====================
+
+/**
+ * 速率限制配置
+ */
+export interface RateLimitConfig {
+  requests_per_minute: number
+  retry_delay: number
+}
+
+/**
+ * 监控配置
+ */
+export interface MonitoringConfig {
+  default_interval: number
+  default_timeout: number
+  max_retries: number
+  concurrent_tasks: number
+  browser_headless: boolean
+  rate_limit?: RateLimitConfig
+}
+
+/**
+ * 检测配置
+ */
+export interface DetectionConfig {
+  enable_smart_detection: boolean
+  similarity_threshold: number
+  min_change_length: number
+  ignore_selectors: string[]
+  extract_fields: Record<string, string>
+}
+
+/**
+ * 通知配置
+ */
+export interface NotificationConfig {
+  enabled_platforms: string[]
+  templates: Record<string, string>
+  platform_configs: Record<string, Record<string, any>>
+}
+
+/**
+ * 平台信息
+ */
+export interface PlatformInfo {
+  name: string
+  enabled: boolean
+  in_enabled_list: boolean
+  config: Record<string, any>
+}
+
+/**
+ * AI 配置
+ */
+export interface AIConfig {
+  enabled: boolean
+  api_url: string
+  api_key: string
+  model: string
+  max_tokens: number
+  temperature: number
+  timeout: number
+  retry_attempts: number
+  retry_base_delay: number
+  retry_max_delay: number
+  system_prompt: string
+  user_prompt_template: string
+}
+
+/**
+ * 存储配置
+ */
+export interface StorageConfig {
+  history_file: string
+  max_history_entries: number
+  auto_cleanup_days: number
+}
+
+/**
+ * 日志轮转配置
+ */
+export interface LogRotationConfig {
+  type: string
+  interval: number
+  retention_days: number
+  max_size: number
+  backup_count: number
+}
+
+/**
+ * 日志配置
+ */
+export interface LoggingConfig {
+  level: string
+  log_dir: string
+  rotation?: LogRotationConfig
+  handlers: string[]
+  compression: boolean
+  async_mode: boolean
+  buffer_size: number
+}
+
+/**
+ * 调度器性能配置
+ */
+export interface SchedulerPerformanceConfig {
+  max_concurrent_tasks: number
+  max_browser_resources: number
+  scheduler_loop_interval: number
+}
+
+/**
+ * 调度器重试配置
+ */
+export interface SchedulerRetryConfig {
+  retry_attempts: number
+  retry_delay: number
+}
+
+/**
+ * 调度器配置
+ */
+export interface SchedulerConfig {
+  performance?: SchedulerPerformanceConfig
+  retry?: SchedulerRetryConfig
+}
+
+/**
+ * 所有配置
+ */
+export interface AllSettings {
+  monitoring?: MonitoringConfig
+  detection?: DetectionConfig
+  notification?: NotificationConfig
+  ai?: AIConfig
+  storage?: StorageConfig
+  logging?: LoggingConfig
+  scheduler?: SchedulerConfig
+}
+
+/**
+ * 配置响应
+ */
+export interface SettingsResponse {
+  success: boolean
+  message: string
+  data: AllSettings
+}
+
+/**
+ * 配置段响应
+ */
+export interface SettingsSectionResponse {
+  success: boolean
+  message: string
+  section: string
+  data: Record<string, any>
+}
