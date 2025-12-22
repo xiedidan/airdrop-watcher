@@ -2,7 +2,7 @@
 
 > **最后更新**: 2025-12-22 | **更新人**: Claude
 > **项目阶段**: 阶段十二 - WebUI 开发
-> **进度**: 85% (70/82 任务)
+> **进度**: 87% (71/82 任务)
 
 ---
 
@@ -23,7 +23,7 @@
 | Agent | 当前任务 | 状态 | 开始时间 | 预计完成 |
 |-------|---------|------|---------|---------|
 | **Human** | 决策和审查 | - | - | - |
-| **Claude** | #047 敏感信息保护 | 🔄 进行中 | 2025-12-22 | - |
+| **Claude** | 无 | ✅ 完成 #047 | 2025-12-22 | - |
 | **KIMI** | 无 | 💤 空闲 | - | - |
 | **Kiro** | 无 | 💤 空闲 | - | - |
 | **Kilo** | 无 | 💤 空闲 | - | - |
@@ -109,10 +109,6 @@
 
 **原有高优先级任务**
 
-- [ ] **#047** 实现敏感信息保护 `@Claude` `开始:2025-12-22` `预计:3h` `依赖:无` [详情](tasks/details/todo/047-security-manager.md)
-  - 描述：创建SecurityManager类，在日志中自动屏蔽token等敏感信息
-  - 验收：日志中不显示完整的token/密钥
-
 - [ ] **#051** 编写配置管理单元测试 `@无人认领` `预计:4h` `依赖:#007,#008,#009` [详情](tasks/details/todo/051-config-tests.md)
   - 描述：测试ConfigManager、EnvConfig、JsonConfig的所有功能
   - 验收：测试覆盖率>90%，包含边界情况
@@ -193,6 +189,22 @@
 ## ✅ 已完成 (DONE)
 
 ### 最近完成 (2025-12-22)
+
+- [x] **#047** 实现敏感信息保护 `@Claude` `完成:2025-12-22` ⏱️ 实际:1.5h
+  - 创建 SecurityManager 类 (webmon/utils/security_manager.py)
+    - 支持自动屏蔽 API Key、Token、Webhook URL、密码等敏感信息
+    - 内置正则表达式模式匹配：OpenAI Key、Discord Webhook、Telegram Token 等
+    - 支持注册自定义敏感值
+    - 支持从环境变量加载敏感信息
+    - 提供 mask_dict() 方法处理嵌套字典
+  - 创建 SecretMaskingFilter 过滤器（标准库 logging 集成）
+  - 创建 LoguruSecretMaskingHandler 处理器（Loguru 集成）
+  - 集成到增强日志系统 (enhanced_logger.py)
+    - Loguru handlers 自动添加敏感信息过滤
+    - 标准库 logging 自动添加 SecretMaskingFilter
+  - 更新 utils/__init__.py 导出新模块
+  - 编写完整单元测试 (33 个测试用例全部通过)
+  - 验收通过：日志中不显示完整的 token/密钥 ✅
 
 - [x] **#084** 实现 CLI web 子命令 `@Claude` `完成:2025-12-22` ⏱️ 实际:0.5h
   - 创建 web_command.py 命令实现
@@ -609,9 +621,9 @@ git push origin main
 ## 📈 统计信息
 
 **任务总数**: 82
-**已完成**: 70 (85%)
+**已完成**: 71 (87%)
 **进行中**: 0 (0%)
-**待办**: 12 (15%)
+**待办**: 11 (13%)
 **阻塞**: 0 (0%)
 
 **阶段完成度**:

@@ -38,6 +38,17 @@ from .logger import get_logger, setup_global_logger
 # 从simple_logger模块导入简化日志函数（备用）
 from .simple_logger import get_logger as get_simple_logger, setup_global_logger as setup_simple_global_logger
 
+# 从security_manager模块导入敏感信息保护
+from .security_manager import (
+    SecurityManager,
+    SecretMaskingFilter,
+    LoguruSecretMaskingHandler,
+    get_security_manager,
+    mask_secrets,
+    register_secret,
+    security_manager
+)
+
 __all__ = [
     # 格式化函数
     'format_file_size',
@@ -66,5 +77,13 @@ __all__ = [
     'get_logger',
     'setup_global_logger',
     'get_simple_logger',
-    'setup_simple_global_logger'
+    'setup_simple_global_logger',
+    # 敏感信息保护
+    'SecurityManager',
+    'SecretMaskingFilter',
+    'LoguruSecretMaskingHandler',
+    'get_security_manager',
+    'mask_secrets',
+    'register_secret',
+    'security_manager'
 ]

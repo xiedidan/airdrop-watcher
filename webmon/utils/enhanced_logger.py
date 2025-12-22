@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 增强版日志系统
-支持按大小和日期轮转，结构化日志，动态配置
+支持按大小和日期轮转，结构化日志，动态配置，敏感信息自动屏蔽
 """
 
 import os
@@ -29,6 +29,17 @@ try:
     CONFIG_AVAILABLE = True
 except ImportError:
     CONFIG_AVAILABLE = False
+
+# 导入敏感信息保护模块
+try:
+    from webmon.utils.security_manager import (
+        get_security_manager,
+        SecretMaskingFilter,
+        LoguruSecretMaskingHandler
+    )
+    SECURITY_AVAILABLE = True
+except ImportError:
+    SECURITY_AVAILABLE = False
 
 # 日志配置常量
 DEFAULT_LOG_DIR = "logs"
@@ -150,6 +161,14 @@ class EnhancedLogger:
                 # 配置日志级别
                 loguru_logger.remove()  # 移除默认handler
 
+                # 创建敏感信息过滤函数
+                def secret_filter(record):
+                    """过滤日志记录中的敏感信息"""
+                    if SECURITY_AVAILABLE:
+                        security_mgr = get_security_manager()
+                        record["message"] = security_mgr.mask(record["message"])
+                    return True
+
                 # 控制台handler
                 if "console" in self._config.get("handlers", []):
                     console_format = format_config.get("console", CONSOLE_FORMAT)
@@ -158,7 +177,8 @@ class EnhancedLogger:
                         level=level,
                         format=console_format,
                         backtrace=True,
-                        diagnose=True
+                        diagnose=True,
+                        filter=secret_filter
                     )
 
                 # 文件handler
@@ -180,7 +200,8 @@ class EnhancedLogger:
                             rotation=max_size,
                             retention=backup_count,
                             compression="zip" if self._config.get("compression") else None,
-                            enqueue=True  # 线程安全
+                            enqueue=True,  # 线程安全
+                            filter=secret_filter
                         )
                     else:  # time based
                         loguru_logger.add(
@@ -190,7 +211,8 @@ class EnhancedLogger:
                             rotation="1 day",
                             retention=f"{rotation_config.get('retention_days', DEFAULT_RETENTION_DAYS)} days",
                             compression="zip" if self._config.get("compression") else None,
-                            enqueue=True
+                            enqueue=True,
+                            filter=secret_filter
                         )
 
                 # 错误文件handler
@@ -207,7 +229,8 @@ class EnhancedLogger:
                             rotation=max_size,
                             retention=backup_count,
                             compression="zip" if self._config.get("compression") else None,
-                            enqueue=True
+                            enqueue=True,
+                            filter=secret_filter
                         )
                     else:
                         loguru_logger.add(
@@ -217,7 +240,8 @@ class EnhancedLogger:
                             rotation="1 day",
                             retention=f"{rotation_config.get('retention_days', DEFAULT_RETENTION_DAYS)} days",
                             compression="zip" if self._config.get("compression") else None,
-                            enqueue=True
+                            enqueue=True,
+                            filter=secret_filter
                         )
 
                 # 标记为已初始化
@@ -234,19 +258,24 @@ class EnhancedLogger:
             log_dir = self._setup_log_directory()
             level = self._config.get("level", DEFAULT_LOG_LEVEL)
             rotation_config = self._config.get("rotation", {})
-            
+
             # 创建logger
             logger = logging.getLogger(self.name)
             logger.setLevel(getattr(logging, level.upper(), logging.INFO))
-            
+
             # 清除现有handlers
             logger.handlers.clear()
-            
+
+            # 添加敏感信息过滤器
+            if SECURITY_AVAILABLE:
+                secret_filter = SecretMaskingFilter()
+                logger.addFilter(secret_filter)
+
             # 控制台handler
             if "console" in self._config.get("handlers", []):
                 console_handler = logging.StreamHandler(sys.stderr)
                 console_handler.setLevel(getattr(logging, level.upper(), logging.INFO))
-                
+
                 console_formatter = logging.Formatter(
                     '%(asctime)s | %(levelname)-8s | %(name)s:%(funcName)s:%(lineno)d - %(message)s',
                     datefmt='%Y-%m-%d %H:%M:%S'
