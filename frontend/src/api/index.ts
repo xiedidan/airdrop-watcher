@@ -22,6 +22,7 @@ import type {
   StorageConfig,
   LoggingConfig,
   SchedulerConfig,
+  AboutInfo,
 } from '@/types'
 
 const api = axios.create({
@@ -328,6 +329,23 @@ export const notificationApi = {
   async getPlatformInfo(platform: string): Promise<Record<string, any>> {
     const response = await api.get<ApiResponse<Record<string, any>>>(`/notification/platforms/${platform}/info`)
     return response.data.data
+  },
+}
+
+/**
+ * 关于 API
+ */
+export const aboutApi = {
+  // 获取关于信息
+  async getInfo(): Promise<AboutInfo> {
+    const response = await api.get<AboutInfo>('/about')
+    return response.data
+  },
+
+  // 获取版本号
+  async getVersion(): Promise<string> {
+    const response = await api.get<{ version: string }>('/about/version')
+    return response.data.version
   },
 }
 

@@ -415,3 +415,47 @@ export interface SettingsSectionResponse {
   section: string
   data: Record<string, any>
 }
+
+// ==================== About 关于页面类型 ====================
+
+/**
+ * 依赖信息
+ */
+export interface DependencyInfo {
+  name: string
+  version: string
+  description: string
+}
+
+/**
+ * 系统信息
+ */
+export interface SystemInfo {
+  python_version: string
+  platform: string
+  platform_version: string
+}
+
+/**
+ * 项目链接
+ */
+export interface ProjectLinks {
+  repository: string
+  documentation: string
+  issues: string
+}
+
+/**
+ * 关于信息响应
+ */
+export interface AboutInfo {
+  name: string
+  description: string
+  version: string
+  author: string
+  license: string
+  links: ProjectLinks
+  system: SystemInfo
+  dependencies: DependencyInfo[]
+  timestamp: string
+}

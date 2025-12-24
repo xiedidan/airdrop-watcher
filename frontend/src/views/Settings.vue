@@ -25,6 +25,10 @@ import {
   NSlider,
   NDivider,
   NText,
+  NA,
+  NList,
+  NListItem,
+  NThing,
   useMessage,
   useDialog,
 } from 'naive-ui'
@@ -38,8 +42,12 @@ import {
   RefreshOutline,
   SaveOutline,
   InformationCircleOutline,
+  LogoGithub,
+  BookOutline,
+  BugOutline,
+  HeartOutline,
 } from '@vicons/ionicons5'
-import { settingsApi, notificationApi } from '@/api'
+import { settingsApi, notificationApi, aboutApi } from '@/api'
 import type {
   AllSettings,
   MonitoringConfig,
@@ -50,6 +58,7 @@ import type {
   LoggingConfig,
   SchedulerConfig,
   PlatformInfo,
+  AboutInfo,
 } from '@/types'
 import type { PlatformTestResult } from '@/api'
 
@@ -67,6 +76,7 @@ const activeTab = ref('monitoring')
 // 配置数据
 const settings = reactive<AllSettings>({})
 const platforms = ref<PlatformInfo[]>([])
+const aboutInfo = ref<AboutInfo | null>(null)
 
 // 表单数据（用于编辑，带默认值防止空指针）
 const monitoringForm = reactive<Partial<MonitoringConfig>>({
@@ -125,6 +135,9 @@ async function loadSettings() {
 
     // 加载平台列表
     platforms.value = await settingsApi.getNotificationPlatforms()
+
+    // 加载关于信息
+    aboutInfo.value = await aboutApi.getInfo()
   } catch (error) {
     console.error('加载配置失败:', error)
     message.error('加载配置失败')
@@ -942,6 +955,120 @@ URL：{url}
               </n-form-item>
             </n-form>
           </n-tab-pane>
+
+          <!-- 关于 -->
+          <n-tab-pane name="about" tab="关于">
+            <template #tab>
+              <n-space align="center" :size="4">
+                <n-icon><InformationCircleOutline /></n-icon>
+                <span>关于</span>
+              </n-space>
+            </template>
+
+            <div v-if="aboutInfo" class="about-content">
+              <!-- 项目信息卡片 -->
+              <n-card class="about-card" :bordered="false">
+                <div class="project-header">
+                  <h1 class="project-name">{{ aboutInfo.name }}</h1>
+                  <n-tag type="primary" size="large">v{{ aboutInfo.version }}</n-tag>
+                </div>
+                <p class="project-description">{{ aboutInfo.description }}</p>
+
+                <n-divider />
+
+                <!-- 项目链接 -->
+                <div class="project-links">
+                  <n-space :size="16">
+                    <n-button
+                      tag="a"
+                      :href="aboutInfo.links.repository"
+                      target="_blank"
+                      type="default"
+                      secondary
+                    >
+                      <template #icon>
+                        <n-icon><LogoGithub /></n-icon>
+                      </template>
+                      GitHub
+                    </n-button>
+                    <n-button
+                      tag="a"
+                      :href="aboutInfo.links.documentation"
+                      target="_blank"
+                      type="default"
+                      secondary
+                    >
+                      <template #icon>
+                        <n-icon><BookOutline /></n-icon>
+                      </template>
+                      文档
+                    </n-button>
+                    <n-button
+                      tag="a"
+                      :href="aboutInfo.links.issues"
+                      target="_blank"
+                      type="default"
+                      secondary
+                    >
+                      <template #icon>
+                        <n-icon><BugOutline /></n-icon>
+                      </template>
+                      反馈问题
+                    </n-button>
+                  </n-space>
+                </div>
+              </n-card>
+
+              <!-- 系统信息 -->
+              <n-card title="系统信息" class="about-card" :bordered="false">
+                <n-descriptions :column="2" label-placement="left" bordered>
+                  <n-descriptions-item label="Python 版本">
+                    {{ aboutInfo.system.python_version }}
+                  </n-descriptions-item>
+                  <n-descriptions-item label="操作系统">
+                    {{ aboutInfo.system.platform }}
+                  </n-descriptions-item>
+                  <n-descriptions-item label="系统版本">
+                    {{ aboutInfo.system.platform_version }}
+                  </n-descriptions-item>
+                  <n-descriptions-item label="许可证">
+                    {{ aboutInfo.license }}
+                  </n-descriptions-item>
+                </n-descriptions>
+              </n-card>
+
+              <!-- 核心依赖 -->
+              <n-card title="核心依赖" class="about-card" :bordered="false">
+                <n-list bordered>
+                  <n-list-item v-for="dep in aboutInfo.dependencies" :key="dep.name">
+                    <n-thing>
+                      <template #header>
+                        <n-space align="center">
+                          <span class="dep-name">{{ dep.name }}</span>
+                          <n-tag type="info" size="small">{{ dep.version }}</n-tag>
+                        </n-space>
+                      </template>
+                      <template #description>
+                        <n-text depth="3">{{ dep.description }}</n-text>
+                      </template>
+                    </n-thing>
+                  </n-list-item>
+                </n-list>
+              </n-card>
+
+              <!-- 致谢 -->
+              <n-card class="about-card" :bordered="false">
+                <n-space align="center" justify="center" class="thanks">
+                  <n-icon color="#f5222d" size="18"><HeartOutline /></n-icon>
+                  <n-text depth="2">感谢所有开源项目贡献者</n-text>
+                </n-space>
+              </n-card>
+            </div>
+
+            <n-spin v-else :show="loading">
+              <div style="height: 200px"></div>
+            </n-spin>
+          </n-tab-pane>
         </n-tabs>
       </n-card>
     </n-spin>
@@ -963,5 +1090,51 @@ URL：{url}
 
 :deep(.n-collapse-item__header-main) {
   font-weight: 500;
+}
+
+/* 关于页面样式 */
+.about-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.about-card {
+  background: transparent;
+}
+
+.project-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.project-name {
+  font-size: 28px;
+  font-weight: 600;
+  margin: 0;
+  background: linear-gradient(90deg, #18a058, #2080f0);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.project-description {
+  font-size: 16px;
+  color: var(--n-text-color-3);
+  margin: 0;
+}
+
+.project-links {
+  margin-top: 8px;
+}
+
+.dep-name {
+  font-weight: 500;
+}
+
+.thanks {
+  padding: 16px 0;
 }
 </style>
