@@ -25,7 +25,6 @@ import {
   NGrid,
   NGridItem,
   NDropdown,
-  useMessage,
   type DataTableColumns,
 } from 'naive-ui'
 import {
@@ -42,9 +41,9 @@ import {
 } from '@vicons/ionicons5'
 import { historyApi } from '@/api'
 import { useTaskStore } from '@/stores/task'
+import { message } from '@/utils/discrete'
 import type { HistoryEntry, ChangeDetails, HistoryStatistics, Task } from '@/types'
 
-const message = useMessage()
 const taskStore = useTaskStore()
 
 // 加载状态

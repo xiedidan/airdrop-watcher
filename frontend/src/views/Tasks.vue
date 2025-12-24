@@ -19,8 +19,6 @@ import {
   NTooltip,
   NText,
   NDivider,
-  useMessage,
-  useDialog,
   type DataTableColumns,
   type FormInst,
   type FormRules,
@@ -39,10 +37,9 @@ import {
 } from '@vicons/ionicons5'
 import { useTaskStore } from '@/stores/task'
 import { useSSEStore } from '@/stores/sse'
+import { message, dialog } from '@/utils/discrete'
 import type { Task, TaskCreate, TaskUpdate } from '@/types'
 
-const message = useMessage()
-const dialog = useDialog()
 const taskStore = useTaskStore()
 const sseStore = useSSEStore()
 

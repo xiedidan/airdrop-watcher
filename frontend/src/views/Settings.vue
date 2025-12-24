@@ -29,8 +29,6 @@ import {
   NList,
   NListItem,
   NThing,
-  useMessage,
-  useDialog,
 } from 'naive-ui'
 import {
   SettingsOutline,
@@ -48,6 +46,7 @@ import {
   HeartOutline,
 } from '@vicons/ionicons5'
 import { settingsApi, notificationApi, aboutApi } from '@/api'
+import { message, dialog } from '@/utils/discrete'
 import type {
   AllSettings,
   MonitoringConfig,
@@ -61,9 +60,6 @@ import type {
   AboutInfo,
 } from '@/types'
 import type { PlatformTestResult } from '@/api'
-
-const message = useMessage()
-const dialog = useDialog()
 
 // 加载状态
 const loading = ref(true)
