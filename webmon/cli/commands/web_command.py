@@ -26,9 +26,12 @@ class WebCommand(Command):
         try:
             self.logger.info("执行启动 WebUI 服务命令")
 
-            # 获取参数
-            port = getattr(self.args, 'port', 8000)
-            host = getattr(self.args, 'host', '0.0.0.0')
+            # 获取参数（优先使用命令行参数，其次是环境变量，最后是默认值）
+            default_port = int(os.getenv('WEB_PORT', '8020'))
+            default_host = os.getenv('WEB_HOST', '0.0.0.0')
+
+            port = getattr(self.args, 'port', default_port)
+            host = getattr(self.args, 'host', default_host)
             no_browser = getattr(self.args, 'no_browser', False)
             reload_mode = getattr(self.args, 'reload', False)
 
@@ -118,5 +121,6 @@ class WebCommand(Command):
 
     def validate_args(self) -> bool:
         """验证参数"""
-        port = getattr(self.args, 'port', 8000)
+        default_port = int(os.getenv('WEB_PORT', '8020'))
+        port = getattr(self.args, 'port', default_port)
         return self._validate_port(port)

@@ -105,7 +105,12 @@ python webmon.py web --no-browser
 python webmon.py web --reload
 ```
 
-访问 http://localhost:8000 即可使用 WebUI 管理界面。
+访问 http://localhost:8020 即可使用 WebUI 管理界面。
+
+**端口配置**：默认端口为 8020，可通过以下方式配置：
+- 命令行参数：`--port 8080`
+- 环境变量：`WEB_PORT=8080`
+- .env 文件：添加 `WEB_PORT=8080`
 
 ## 配置通知平台
 
@@ -290,19 +295,21 @@ airdrop-watcher/
 
 ### 环境变量 (.env)
 
-| 变量 | 说明 | 示例 |
-|------|------|------|
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| WEB_PORT | WebUI 服务端口 | 8020 |
+| WEB_HOST | WebUI 监听地址 | 0.0.0.0 |
 | LOG_LEVEL | 日志级别 | INFO |
-| DISCORD_WEBHOOK_URL | Discord Webhook URL | https://discord.com/api/webhooks/... |
-| TELEGRAM_BOT_TOKEN | Telegram Bot Token | 123456:ABC-DEF... |
-| TELEGRAM_CHAT_ID | Telegram Chat ID | 123456789 |
-| FEISHU_WEBHOOK_URL | 飞书 Webhook URL | https://open.feishu.cn/... |
-| PUSHPLUS_TOKEN | PushPlus Token | xxx |
-| AI_API_KEY | AI API 密钥 | sk-xxx |
-| AI_API_URL | AI API 地址 | https://api.openai.com/v1 |
-| AI_MODEL | AI 模型名称 | gpt-4o-mini |
-| HTTP_PROXY | HTTP 代理 | http://127.0.0.1:10808 |
-| HTTPS_PROXY | HTTPS 代理 | http://127.0.0.1:10808 |
+| DISCORD_WEBHOOK_URL | Discord Webhook URL | - |
+| TELEGRAM_BOT_TOKEN | Telegram Bot Token | - |
+| TELEGRAM_CHAT_ID | Telegram Chat ID | - |
+| FEISHU_WEBHOOK_URL | 飞书 Webhook URL | - |
+| PUSHPLUS_TOKEN | PushPlus Token | - |
+| AI_API_KEY | AI API 密钥 | - |
+| AI_API_URL | AI API 地址 | https://api.deepseek.com/v1 |
+| AI_MODEL | AI 模型名称 | deepseek-reasoner |
+| HTTP_PROXY | HTTP 代理 | - |
+| HTTPS_PROXY | HTTPS 代理 | - |
 
 ### 主配置文件 (config/config.json)
 

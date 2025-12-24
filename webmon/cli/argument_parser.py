@@ -542,19 +542,23 @@ class ArgumentParser:
             description='启动 WebMon Web 管理界面'
         )
 
+        # 从环境变量获取默认端口，默认为 8020
+        default_port = int(os.getenv('WEB_PORT', '8020'))
+        default_host = os.getenv('WEB_HOST', '0.0.0.0')
+
         parser_web.add_argument(
             '--port',
             '-p',
             type=int,
-            default=8000,
-            help='服务端口 (默认: 8000)'
+            default=default_port,
+            help=f'服务端口 (默认: {default_port}，可通过 WEB_PORT 环境变量配置)'
         )
 
         parser_web.add_argument(
             '--host',
             type=str,
-            default='0.0.0.0',
-            help='监听地址 (默认: 0.0.0.0)'
+            default=default_host,
+            help=f'监听地址 (默认: {default_host}，可通过 WEB_HOST 环境变量配置)'
         )
 
         parser_web.add_argument(
