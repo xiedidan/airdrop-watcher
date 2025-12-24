@@ -151,375 +151,71 @@
 
 ### 最近完成 (2025-12-24)
 
-- [x] **#088** 实现 Settings 关于页面 `@Claude` `完成:2025-12-24` ⏱️ 实际:0.5h
-  - 在 Settings 添加"关于"标签页
-  - 显示项目名称、版本号、项目描述
-  - 显示 GitHub 仓库、文档、Issue 反馈链接按钮
-  - 显示系统信息（Python 版本、操作系统、许可证）
-  - 显示核心依赖列表（FastAPI、Vue 3、Playwright 等）
-  - 创建 /api/about 后端 API
-  - 前端构建成功 ✅
-
-- [x] **#087** 实现历史记录导出功能 `@Claude` `完成:2025-12-24` ⏱️ 实际:0.5h
-  - 在 History 页面添加"导出"下拉按钮
-  - 支持导出为 JSON 格式（格式化输出）
-  - 支持导出为 CSV 格式（带 BOM 支持 Excel）
-  - 导出当前筛选结果的所有记录
-  - 文件名包含日期：history_export_YYYY-MM-DD.json/csv
-  - 前端构建成功 ✅
-
-- [x] **#086** 实现 Dashboard 监控控制按钮 `@Claude` `完成:2025-12-24` ⏱️ 实际:0.3h
-  - 在 Dashboard 顶部操作栏添加"开始监控/停止监控"按钮
-  - 按钮状态与监控状态同步（运行中显示红色停止按钮，已停止显示绿色开始按钮）
-  - 支持加载状态显示
-  - 调用 monitorStore 的 startMonitor/stopMonitor 方法
-  - 前端构建成功 ✅
-
-- [x] **#085** 实现底部状态栏组件 `@Claude` `完成:2025-12-24` ⏱️ 实际:0.5h
-  - 增强 AppLayout 底部状态栏
-  - 添加监控状态指示器（绿色闪烁圆点表示运行中，灰色表示已停止）
-  - 显示活跃任务数/总任务数
-  - 添加最近变化时间（相对时间格式，如"2分钟前"）
-  - 保留 SSE 连接状态显示
-  - 所有元素支持 tooltip 提示
-  - 前端构建成功 ✅
+- [x] **#088** 实现 Settings 关于页面 `@Claude` `完成:2025-12-24` ⏱️ 0.5h
+- [x] **#087** 实现历史记录导出功能 `@Claude` `完成:2025-12-24` ⏱️ 0.5h
+- [x] **#086** 实现 Dashboard 监控控制按钮 `@Claude` `完成:2025-12-24` ⏱️ 0.3h
+- [x] **#085** 实现底部状态栏组件 `@Claude` `完成:2025-12-24` ⏱️ 0.5h
 
 ### 最近完成 (2025-12-22)
 
-- [x] **#047** 实现敏感信息保护 `@Claude` `完成:2025-12-22` ⏱️ 实际:1.5h
-  - 创建 SecurityManager 类 (webmon/utils/security_manager.py)
-    - 支持自动屏蔽 API Key、Token、Webhook URL、密码等敏感信息
-    - 内置正则表达式模式匹配：OpenAI Key、Discord Webhook、Telegram Token 等
-    - 支持注册自定义敏感值
-    - 支持从环境变量加载敏感信息
-    - 提供 mask_dict() 方法处理嵌套字典
-  - 创建 SecretMaskingFilter 过滤器（标准库 logging 集成）
-  - 创建 LoguruSecretMaskingHandler 处理器（Loguru 集成）
-  - 集成到增强日志系统 (enhanced_logger.py)
-    - Loguru handlers 自动添加敏感信息过滤
-    - 标准库 logging 自动添加 SecretMaskingFilter
-  - 更新 utils/__init__.py 导出新模块
-  - 编写完整单元测试 (33 个测试用例全部通过)
-  - 验收通过：日志中不显示完整的 token/密钥 ✅
-
-- [x] **#084** 实现 CLI web 子命令 `@Claude` `完成:2025-12-22` ⏱️ 实际:0.5h
-  - 创建 web_command.py 命令实现
-    - 支持 --port/-p 自定义端口（默认 8000）
-    - 支持 --host 自定义监听地址（默认 0.0.0.0）
-    - 支持 --no-browser 不自动打开浏览器
-    - 支持 --reload 开发模式自动重载
-  - 更新 argument_parser.py 添加 web 子命令
-  - 更新 command_factory.py 注册 WebCommand
-  - 使用命令：
-    - 启动服务：`python webmon.py web`
-    - 指定端口：`python webmon.py web --port 8080`
-    - 不打开浏览器：`python webmon.py web --no-browser`
-  - 测试通过 ✅
-
-- [x] **#083** 编写 docker-compose.yml `@Claude` `完成:2025-12-22` ⏱️ 实际:0.5h
-  - 创建 docker-compose.yml 配置文件
-    - webmon 服务编排
-    - 环境变量配置（AI、推送平台、监控、代理）
-    - 数据卷挂载（config、data、logs）
-    - 健康检查配置
-    - 资源限制（内存 1G）
-    - 日志轮转配置
-  - 创建 .env.docker.example 示例环境变量文件
-  - 配置验证通过 ✅
-  - 使用命令：
-    - 复制配置：`cp .env.docker.example .env`
-    - 启动服务：`docker-compose up -d`
-    - 查看日志：`docker-compose logs -f`
-    - 停止服务：`docker-compose down`
-
-- [x] **#082** 编写 Dockerfile `@Claude` `完成:2025-12-22` ⏱️ 实际:1h
-  - 创建多阶段 Dockerfile
-    - 阶段1: Node 20 Alpine 构建 Vue 前端
-    - 阶段2: Python 3.11 slim 运行 FastAPI 后端
-  - 安装 Playwright Chromium 浏览器依赖
-  - 支持非 root 用户运行（安全最佳实践）
-  - 添加 /health 健康检查端点
-  - 创建 .dockerignore 优化构建上下文
-  - 构建命令：`docker build -t webmon:latest .`
-  - 运行命令：`docker run -p 8000:8000 webmon:latest`
-
-- [x] **#081** 实现通知测试功能 `@Claude` `完成:2025-12-22` ⏱️ 实际:1h
-  - 创建通知管理 API 路由 (api/notification.py)
-    - POST /api/notification/test - 发送测试通知
-    - POST /api/notification/test-all - 测试所有平台
-    - GET /api/notification/platforms - 获取可用平台
-    - GET /api/notification/platforms/{platform}/info - 获取平台信息
-  - 实现前端通知测试功能
-    - 在 Settings 页面通知配置面板添加测试按钮
-    - 支持测试单个平台或所有平台
-    - 显示详细测试结果对话框
-  - 更新 notification/__init__.py 导出 NotificationService
-  - 所有 API 测试通过 ✅
-
-- [x] **#080** 实现 Settings 页面 `@Claude` `完成:2025-12-22` ⏱️ 实际:2h
-  - 创建前端 TypeScript 类型定义 (types/index.ts)
-    - 各配置段类型：MonitoringConfig, DetectionConfig, NotificationConfig, AIConfig 等
-    - API 响应类型：SettingsResponse, SettingsSectionResponse, PlatformInfo
-  - 实现 settingsApi 服务 (api/index.ts)
-    - getAll、getSection、updateMonitoring/Detection/Notification/AI/Storage/Logging/Scheduler
-    - getNotificationPlatforms、updatePlatformConfig、resetSection
-  - 实现完整 Settings.vue 页面
-    - 7 个配置标签页：监控、检测、通知、AI、存储、日志、调度器
-    - 监控配置：检测间隔、超时时间、重试次数、并发数、浏览器模式、速率限制
-    - 检测配置：智能检测开关、相似度阈值、最小变化长度、忽略选择器
-    - 通知配置：平台列表展示、启用平台选择
-    - AI 配置：启用开关、API 地址/Key、模型、Token 数、温度、提示词模板编辑（含占位符说明）
-    - 存储配置：历史文件路径、最大记录数、自动清理天数
-    - 日志配置：级别、目录、轮转配置
-    - 调度器配置：性能参数、重试配置
-  - 每个配置段支持保存和重置为默认值
-  - 前端构建成功 ✅
-
-- [x] **#079** 实现配置管理 API `@Claude` `完成:2025-12-22` ⏱️ 实际:1.5h
-  - 创建 Pydantic 数据模型 (schemas/settings.py)
-    - 监控、检测、通知、AI、存储、日志、调度器配置模型
-    - 配置更新模型（支持部分更新）
-  - 实现 SettingsService 服务层
-    - 获取所有/单个配置段
-    - 更新配置段（深度合并）
-    - 重置配置为默认值
-    - 敏感信息掩码（API Key、Token 等）
-  - 实现配置管理 API 路由 (api/settings.py)
-    - GET /api/settings - 获取所有配置
-    - GET /api/settings/{section} - 获取指定配置段
-    - PUT /api/settings/{section} - 更新配置段
-    - GET /api/settings/notification/platforms - 获取通知平台列表
-    - PUT /api/settings/notification/platforms/{platform} - 更新平台配置
-    - POST /api/settings/{section}/reset - 重置配置段
-  - 所有 API 测试通过 ✅
+- [x] **#047** 实现敏感信息保护 `@Claude` `完成:2025-12-22` ⏱️ 1.5h
+- [x] **#084** 实现 CLI web 子命令 `@Claude` `完成:2025-12-22` ⏱️ 0.5h
+- [x] **#083** 编写 docker-compose.yml `@Claude` `完成:2025-12-22` ⏱️ 0.5h
+- [x] **#082** 编写 Dockerfile `@Claude` `完成:2025-12-22` ⏱️ 1h
+- [x] **#081** 实现通知测试功能 `@Claude` `完成:2025-12-22` ⏱️ 1h
+- [x] **#080** 实现 Settings 页面 `@Claude` `完成:2025-12-22` ⏱️ 2h
+- [x] **#079** 实现配置管理 API `@Claude` `完成:2025-12-22` ⏱️ 1.5h
 
 ### 最近完成 (2025-12-19)
 
-- [x] **#078** 前端 SSE 集成 `@Claude` `完成:2025-12-19 20:00` ⏱️ 实际:1h
-  - 创建 useSSE composable（支持自动重连、事件监听、心跳保活）
-  - 创建 SSE Store（sseStore）集中管理 SSE 连接
-  - 实现事件分发机制：
-    - 监控事件 -> MonitorStore
-    - 任务事件 -> TaskStore
-    - 检测事件 -> 更新任务状态
-  - 更新 AppLayout 显示 SSE 连接状态
-  - 更新 Dashboard 页面（移除定时刷新，添加实时更新标识）
-  - 更新 Tasks 页面（自动同步任务状态）
-  - 前端构建成功 ✅
-
-- [x] **#077** 实现 History 页面 `@Claude` `完成:2025-12-19 19:00` ⏱️ 实际:1h
-  - 更新 TypeScript 类型定义（HistoryEntry、ChangeDetails、HistoryStatistics）
-  - 更新前端 API 服务（list、search、getChangeDetails、getStatistics 等）
-  - 实现完整历史记录页面 (History.vue)：
-    - 统计卡片：总记录数、检测次数、变化记录、变化率
-    - 记录列表表格：时间、任务、类型、状态、URL、摘要
-    - 筛选功能：关键词搜索、任务筛选、类型筛选、日期范围、仅显示变化
-    - 分页支持
-  - 实现详情弹窗：
-    - 基本信息展示
-    - 检测结果详情（状态、加载时间、内容大小、新增/删除行数）
-    - 变化详情（AI分析摘要、变化摘要、Diff对比）
-    - 新旧内容对比视图
-  - 前端构建成功 ✅
-
-- [x] **#076** 实现历史记录 API `@Claude` `完成:2025-12-19 18:00` ⏱️ 实际:1h
-  - 创建 history.py Pydantic 数据模型
-  - 实现 HistoryService 服务层
-  - 实现历史记录 API 路由 (api/history.py)
-  - API 端点:
-    - GET /api/history - 获取历史记录列表（支持分页、筛选）
-    - GET /api/history/search - 搜索历史记录（关键词、日期范围、状态筛选）
-    - GET /api/history/statistics - 获取统计信息
-    - GET /api/history/storage - 获取存储信息
-    - GET /api/history/recent-changes - 获取最近变化记录
-    - GET /api/history/check-results - 获取检测结果列表
-    - GET /api/history/change-details - 获取变化详情列表
-    - GET /api/history/entry/{id} - 获取单条记录详情
-    - DELETE /api/history/cleanup - 清理旧记录
-  - 所有 API 测试通过 ✅
-
-- [x] **#075** 实现 SSE 事件流 `@Claude` `完成:2025-12-19 16:30` ⏱️ 实际:1h
-  - 创建 event_manager.py 事件管理器模块
-  - 实现 EventType 枚举（16种事件类型）
-  - 实现 SSEEvent 数据结构和格式化方法
-  - 实现 EventManager 类：
-    - 客户端连接管理（connect/disconnect）
-    - 事件广播机制（broadcast）
-    - 心跳保活（30秒间隔）
-  - 创建 /api/events SSE 端点
-  - 创建 /api/events/status 状态查询端点
-  - 集成到 API 路由：
-    - monitor.py：监控启动/停止事件
-    - tasks.py：任务CRUD、启用/禁用、检测事件
-  - SSE 连接测试通过 ✅
-
-- [x] **#074** 实现 Tasks 页面 `@Claude` `完成:2025-12-19 16:00` ⏱️ 实际:1.5h
-  - 实现完整任务管理页面 (Tasks.vue)
-  - 任务列表表格，显示名称、URL、状态、检测间隔、最后检测时间、变化次数
-  - 关键词搜索（支持名称、URL、描述）
-  - 状态筛选（全部/已启用/已禁用/有错误）
-  - 添加/编辑任务弹窗，包含：
-    - 基础配置：任务名称、URL、描述、CSS选择器
-    - 时间配置：检测间隔、超时时间
-    - 状态配置：启用/禁用开关
-    - AI配置：自定义用户提示词（带占位符提示）
-  - 任务操作：启用/禁用、立即检测、编辑、删除（带确认）
-  - 表单验证和消息提示
-  - 前端构建成功 ✅
-
-- [x] **#073** 实现 Dashboard 页面 `@Claude` `完成:2025-12-19 15:30` ⏱️ 实际:1h
-  - 创建 TypeScript 类型定义 (types/index.ts)
-  - 创建统一 API 服务层 (api/index.ts)
-  - 增强 Monitor Store 支持完整状态数据
-  - 创建 Task Store 任务状态管理
-  - 实现 Dashboard 页面完整功能:
-    - 四个统计卡片（任务总数、变化数、成功率、运行时间）
-    - 最近变化列表（展示最近5条变化记录）
-    - 任务概览表格（展示任务状态、最后变化时间）
-    - 错误任务提示卡片
-    - 30秒自动刷新
-  - 前端构建成功 ✅
-
-- [x] **#072** 搭建 Vue 3 前端框架 `@Claude` `完成:2025-12-19 15:00` ⏱️ 实际:1h
-  - 初始化 frontend/ 目录，使用 Vite + Vue 3 + TypeScript
-  - 安装配置 Naive UI 组件库，中文语言包
-  - 配置深色主题默认启用
-  - 创建 AppLayout 基础布局组件（顶部导航、内容区、底部状态栏）
-  - 配置 Vue Router 4 路由（Dashboard、Tasks、History、Settings）
-  - 创建 Pinia Store（监控状态管理）
-  - 配置 Vite API 代理（/api -> http://127.0.0.1:8000）
-  - 前端构建成功，开发服务器正常运行 ✅
+- [x] **#078** 前端 SSE 集成 `@Claude` `完成:2025-12-19` ⏱️ 1h
+- [x] **#077** 实现 History 页面 `@Claude` `完成:2025-12-19` ⏱️ 1h
+- [x] **#076** 实现历史记录 API `@Claude` `完成:2025-12-19` ⏱️ 1h
+- [x] **#075** 实现 SSE 事件流 `@Claude` `完成:2025-12-19` ⏱️ 1h
+- [x] **#074** 实现 Tasks 页面 `@Claude` `完成:2025-12-19` ⏱️ 1.5h
+- [x] **#073** 实现 Dashboard 页面 `@Claude` `完成:2025-12-19` ⏱️ 1h
+- [x] **#072** 搭建 Vue 3 前端框架 `@Claude` `完成:2025-12-19` ⏱️ 1h
 
 ### 最近完成 (2025-12-18)
 
-- [x] **#071** 实现监控控制 API `@Claude` `完成:2025-12-18 10:40` ⏱️ 实际:0.5h
-  - 创建监控 Pydantic 数据模型 (schemas/monitor.py)
-  - 实现监控服务层 (services/monitor_service.py)，集成 TaskScheduler
-  - 实现监控 API 路由 (api/monitor.py)
-  - API 端点: GET /api/monitor/status, POST /api/monitor/start, POST /api/monitor/stop, GET /api/monitor/stats
-  - 支持监控器启动/停止/状态查询
-  - 所有 API 测试通过 ✅
-
-- [x] **#070** 实现任务管理 API `@Claude` `完成:2025-12-18 10:10` ⏱️ 实际:0.5h
-  - 创建任务 Pydantic 数据模型 (schemas/task.py)
-  - 实现任务服务层 (services/task_service.py)
-  - 实现任务 API 路由 (api/tasks.py)
-  - API 端点: GET/POST/PUT/DELETE /api/tasks
-  - 支持任务启用/禁用/立即检测
-  - Swagger 文档自动生成 ✅
-  - 所有 API 测试通过 ✅
-
-- [x] **#069** 搭建 FastAPI 后端框架 `@Claude` `完成:2025-12-18 09:40` ⏱️ 实际:0.5h
-  - 创建 webmon/web/ 模块目录结构
-  - 实现 FastAPI 应用入口 (app.py)
-  - 创建基础 Pydantic 数据模型 (schemas/common.py)
-  - 实现根路由 (/, /health, /api)
-  - 添加 FastAPI、uvicorn、sse-starlette 依赖
-  - 所有端点测试通过 ✅
+- [x] **#071** 实现监控控制 API `@Claude` `完成:2025-12-18` ⏱️ 0.5h
+- [x] **#070** 实现任务管理 API `@Claude` `完成:2025-12-18` ⏱️ 0.5h
+- [x] **#069** 搭建 FastAPI 后端框架 `@Claude` `完成:2025-12-18` ⏱️ 0.5h
 
 ### 最近完成 (2025-12-12)
 
-- [x] **#067** 集成AI分析到通知流程 `@Claude` `完成:2025-12-12 13:10` ⏱️ 实际:0.5h
-  - NotificationService集成AIAnalysisService
-  - send_webpage_change_notification()调用AI分析
-  - 模板引擎支持ai_summary参数
-  - 完整的超时处理和降级策略
-  - 所有测试通过 ✅
+- [x] **#067** 集成AI分析到通知流程 `@Claude` `完成:2025-12-12` ⏱️ 0.5h
+- [x] **#064** 添加AI配置项 `@Claude` `完成:2025-12-12` ⏱️ 0.5h
+- [x] **#066** 实现提示词模板系统 `@Claude` `完成:2025-12-12` ⏱️ 0.5h
+- [x] **#063** 创建AI分析服务模块 `@Claude` `完成:2025-12-12` ⏱️ 1.5h
+- [x] **#065** 更新Task模型添加描述字段 `@Claude` `完成:2025-12-12` ⏱️ 0.5h
 
-- [x] **#064** 添加AI配置项 `@Claude` `完成:2025-12-12 13:00` ⏱️ 实际:0.5h
-  - 在config.json中添加AI配置区块
-  - ConfigManager添加get_ai_config()、update_ai_config()、get_ai_config_value()方法
-  - ConfigValidator添加validate_ai_config()验证方法
-  - 更新默认配置模板包含AI配置
-  - 所有测试通过 ✅
+### 最近完成 (2025-12-07 ~ 2025-12-08)
 
-- [x] **#066** 实现提示词模板系统 `@Claude` `完成:2025-12-12 12:30` ⏱️ 实际:0.5h
-  - 系统提示词和用户提示词模板已在AIConfig中定义
-  - render_prompt()方法支持{task_name}、{url}、{description}、{changes}等占位符
-  - 提示词模板可在config.json中自定义
-  - 已集成到AIAnalysisService
-
-- [x] **#063** 创建AI分析服务模块 `@Claude` `完成:2025-12-12 12:30` ⏱️ 实际:1.5h
-  - 创建webmon/ai/模块，包含AIAnalysisService、AIConfig、AIAnalysisResult
-  - 实现OpenAI兼容API调用（支持DeepSeek R1/OpenAI/通义千问等）
-  - 提示词模板渲染（支持{task_name}、{url}、{description}、{changes}等占位符）
-  - 添加AI相关异常类（AIAnalysisError、AIConfigError、AIAPIError、AITimeoutError）
-  - 更新.env.example添加AI配置项
-  - 所有测试通过 ✅
-
-- [x] **#065** 更新Task模型添加描述字段 `@Claude` `完成:2025-12-12 11:39` ⏱️ 实际:0.5h
-  - 在Task模型中添加description字段
-  - 更新add/edit命令支持--description参数
-  - 修复间隔单位显示错误（分钟→秒）
-  - 更新list命令CSV输出包含description
-
-### 最近完成 (2025-12-08)
-
-- [x] **#000** 修复CLI命令显示逻辑 `@Claude` `完成:2025-12-08 15:24` ⏱️ 实际:1.5h
-  - 修复list命令：显示真实的status字段（error/active/等），新增"启用"列
-  - 修复status命令：添加任务状态统计，显示每个任务的详细状态和彩色图标
-  - 修复start命令：自动启用被禁用的任务，添加_enable_task()方法
-  - 设计理念：start即enable，简化用户操作
-  - 相关文件：list_command.py, status_command.py, start_command.py
-
-### 最近完成 (2025-12-07)
-
-- [x] **#000** Discord通知功能完整测试 `@Claude` `完成:2025-12-07 16:16` ⏱️ 实际:3h
-  - 修复Discord平台update_config()方法，确保配置正确加载
-  - 修复await调用同步函数的API兼容性问题
-  - 简化通知流程，跳过未实现的get_change_details方法
-  - 完整测试Discord通知功能，验证通过 ✅
-  - 创建测试服务器，实现端到端测试
-
-- [x] **#059** 创建README.md `@Claude` `完成:2025-12-07 16:30` ⏱️ 实际:1.5h
-  - 编写完整的项目README文档
-  - 包含快速开始指南、命令详解、配置说明
-  - 添加使用示例、故障排查、性能优化指南
-  - 反映所有已实现功能的实际状态
-
-- [x] **#000** 创建快速开始指南 `@Claude` `完成:2025-12-07 16:32` ⏱️ 实际:0.5h
-  - 创建QUICKSTART.md，5分钟快速上手指南
-  - 包含完整的安装、配置、测试流程
-  - 添加常见问题和使用技巧
-
-- [x] **#000** 创建更新日志 `@Claude` `完成:2025-12-07 16:32` ⏱️ 实际:0.5h
-  - 创建docs/CHANGELOG.md
-  - 记录所有开发阶段和重要变更
-  - 添加版本规划和路线图
+- [x] **#000** 修复CLI命令显示逻辑 `@Claude` `完成:2025-12-08` ⏱️ 1.5h
+- [x] **#000** Discord通知功能完整测试 `@Claude` `完成:2025-12-07` ⏱️ 3h
+- [x] **#059** 创建README.md `@Claude` `完成:2025-12-07` ⏱️ 1.5h
+- [x] **#000** 创建快速开始指南 `@Claude` `完成:2025-12-07` ⏱️ 0.5h
+- [x] **#000** 创建更新日志 `@Claude` `完成:2025-12-07` ⏱️ 0.5h
 
 ### 最近完成 (2025-12-01 ~ 2025-12-02)
 
-- [x] **#048** 实现网络安全功能 `@Claude` `完成:2025-12-02 23:50` ⏱️ 实际:4h
-  - 创建NetworkConfig类，支持HTTP/HTTPS/SOCKS5代理
-  - 支持代理认证、SSL配置、User-Agent自定义
-  - 集成到BrowserEngine，所有测试通过
-
-- [x] **#000** 修复环境变量配置问题 `@Claude` `完成:2025-12-02` ⏱️ 实际:2h
-  - 修复了DEFAULT_CHECK_INTERVAL vs DEFAULT_INTERVAL命名不一致
-  - 更新ArgumentParser从环境变量读取默认值
-
-- [x] **#000** 项目目录整理 `@Claude` `完成:2025-12-02` ⏱️ 实际:1.5h
-  - 创建archive目录，移动调试和临时文件
-  - 更新设计文档，添加项目目录结构章节
-  - 修复requirements.txt中的标准库依赖
-
-- [x] **#000** 修复通知系统环境变量解析 `@Claude` `完成:2025-12-02` ⏱️ 实际:1h
-  - 修复NotificationService未解析${VAR}格式的环境变量引用
-  - 修复Discord平台配置加载问题
+- [x] **#048** 实现网络安全功能 `@Claude` `完成:2025-12-02` ⏱️ 4h
+- [x] **#000** 修复环境变量配置问题 `@Claude` `完成:2025-12-02` ⏱️ 2h
+- [x] **#000** 项目目录整理 `@Claude` `完成:2025-12-02` ⏱️ 1.5h
+- [x] **#000** 修复通知系统环境变量解析 `@Claude` `完成:2025-12-02` ⏱️ 1h
 
 ### 阶段八完成 (2025-11-29)
 
-- [x] **#043** 实现日志管理器 `@Previous` `完成:2025-11-29` ⏱️ 实际:3h
-- [x] **#044** 实现日志轮转功能 `@Previous` `完成:2025-11-29` ⏱️ 实际:2h
-- [x] **#045** 实现异常分类和处理 `@Previous` `完成:2025-11-29` ⏱️ 实际:4h
-- [x] **#046** 实现错误恢复机制 `@Previous` `完成:2025-11-29` ⏱️ 实际:3h (部分完成)
+- [x] **#043** 实现日志管理器 `@Previous` `完成:2025-11-29` ⏱️ 3h
+- [x] **#044** 实现日志轮转功能 `@Previous` `完成:2025-11-29` ⏱️ 2h
+- [x] **#045** 实现异常分类和处理 `@Previous` `完成:2025-11-29` ⏱️ 4h
+- [x] **#046** 实现错误恢复机制 `@Previous` `完成:2025-11-29` ⏱️ 3h
 
-### 阶段一至七完成
+### 阶段一至七完成 (2025-11-28)
 
 - [x] **#001-#042** 所有核心功能开发完成 `@Previous` `完成:2025-11-28`
-  - 基础框架、配置管理、数据模型
-  - 浏览器引擎、变化检测、通知系统
-  - CLI命令系统、任务调度器
+  - 基础框架、配置管理、数据模型、浏览器引擎、变化检测、通知系统、CLI命令、任务调度器
 
 ---
 
