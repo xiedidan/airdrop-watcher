@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { h, ref, computed, onMounted } from 'vue'
+import { h, ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { NLayout, NLayoutHeader, NLayoutContent, NLayoutFooter, NMenu, NIcon, NSpace, NButton, NBadge, NText, NTooltip } from 'naive-ui'
 import {
@@ -11,8 +11,10 @@ import {
   StopCircleOutline,
   WifiOutline,
   CloudOfflineOutline,
+  EllipseOutline,
 } from '@vicons/ionicons5'
 import { useMonitorStore } from '@/stores/monitor'
+import { useTaskStore } from '@/stores/task'
 import { useSSEStore } from '@/stores/sse'
 import { SSEConnectionState } from '@/types'
 import type { SSEConnectionStateValue } from '@/types'
@@ -20,7 +22,12 @@ import type { SSEConnectionStateValue } from '@/types'
 const router = useRouter()
 const route = useRoute()
 const monitorStore = useMonitorStore()
+const taskStore = useTaskStore()
 const sseStore = useSSEStore()
+
+// 当前时间（用于相对时间计算）
+const now = ref(new Date())
+let timeUpdateInterval: ReturnType<typeof setInterval> | null = null
 
 // 菜单项
 const menuOptions = [
@@ -65,6 +72,45 @@ const handleToggleMonitor = async () => {
 
 // 初始化获取状态
 monitorStore.fetchStatus()
+taskStore.fetchTasks()
+
+// 最近变化时间（从任务列表中获取最新的变化时间）
+const lastChangeTime = computed(() => {
+  const tasksWithChanges = taskStore.tasks.filter(t => t.last_change)
+  if (tasksWithChanges.length === 0) return null
+
+  const latestTask = tasksWithChanges.reduce((latest, current) => {
+    const latestTime = new Date(latest.last_change || 0).getTime()
+    const currentTime = new Date(current.last_change || 0).getTime()
+    return currentTime > latestTime ? current : latest
+  })
+
+  return latestTask.last_change
+})
+
+// 格式化相对时间
+const formatRelativeTime = (dateStr: string | null): string => {
+  if (!dateStr) return '无'
+
+  const date = new Date(dateStr)
+  const diffMs = now.value.getTime() - date.getTime()
+  const diffSeconds = Math.floor(diffMs / 1000)
+  const diffMinutes = Math.floor(diffSeconds / 60)
+  const diffHours = Math.floor(diffMinutes / 60)
+  const diffDays = Math.floor(diffHours / 24)
+
+  if (diffSeconds < 60) return '刚刚'
+  if (diffMinutes < 60) return `${diffMinutes}分钟前`
+  if (diffHours < 24) return `${diffHours}小时前`
+  if (diffDays < 30) return `${diffDays}天前`
+
+  return date.toLocaleDateString('zh-CN')
+}
+
+// 监控状态文本
+const monitorStatusText = computed(() => {
+  return monitorStore.isRunning ? '运行中' : '已停止'
+})
 
 // SSE 连接状态信息
 const sseStatusText = computed(() => {
@@ -96,6 +142,17 @@ const sseStatusType = computed(() => {
 // 初始化 SSE 连接
 onMounted(() => {
   sseStore.init()
+  // 每分钟更新一次当前时间（用于相对时间计算）
+  timeUpdateInterval = setInterval(() => {
+    now.value = new Date()
+  }, 60000)
+})
+
+onUnmounted(() => {
+  if (timeUpdateInterval) {
+    clearInterval(timeUpdateInterval)
+    timeUpdateInterval = null
+  }
 })
 </script>
 
@@ -145,15 +202,51 @@ onMounted(() => {
     <!-- 底部状态栏 -->
     <n-layout-footer bordered class="app-footer">
       <n-space justify="space-between" style="width: 100%">
-        <n-space>
-          <n-text depth="3">
-            任务: {{ monitorStore.activeTasks }}/{{ monitorStore.totalTasks }}
-          </n-text>
+        <n-space align="center" :size="16">
+          <!-- 监控状态 -->
+          <n-tooltip trigger="hover">
+            <template #trigger>
+              <n-space align="center" :size="4" style="cursor: pointer;">
+                <span
+                  class="status-dot"
+                  :class="monitorStore.isRunning ? 'status-running' : 'status-stopped'"
+                ></span>
+                <n-text :type="monitorStore.isRunning ? 'success' : 'default'">
+                  {{ monitorStatusText }}
+                </n-text>
+              </n-space>
+            </template>
+            <span>监控状态: {{ monitorStatusText }}</span>
+          </n-tooltip>
+
           <n-text depth="3">|</n-text>
-          <n-text depth="3">
-            变化: {{ monitorStore.totalChanges }}
-          </n-text>
+
+          <!-- 任务统计 -->
+          <n-tooltip trigger="hover">
+            <template #trigger>
+              <n-text depth="3" style="cursor: pointer;">
+                任务: {{ taskStore.activeCount }}/{{ taskStore.total }}
+              </n-text>
+            </template>
+            <span>活跃任务 {{ taskStore.activeCount }} / 总任务 {{ taskStore.total }}</span>
+          </n-tooltip>
+
           <n-text depth="3">|</n-text>
+
+          <!-- 最近变化 -->
+          <n-tooltip trigger="hover">
+            <template #trigger>
+              <n-text depth="3" style="cursor: pointer;">
+                最近变化: {{ formatRelativeTime(lastChangeTime) }}
+              </n-text>
+            </template>
+            <span v-if="lastChangeTime">{{ new Date(lastChangeTime).toLocaleString('zh-CN') }}</span>
+            <span v-else>暂无变化记录</span>
+          </n-tooltip>
+
+          <n-text depth="3">|</n-text>
+
+          <!-- SSE 连接状态 -->
           <n-tooltip trigger="hover">
             <template #trigger>
               <n-text :type="sseStatusType" style="cursor: pointer;">
@@ -210,5 +303,33 @@ onMounted(() => {
 
 .app-footer {
   padding: 12px 24px;
+}
+
+/* 状态指示器 */
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 2px;
+}
+
+.status-running {
+  background-color: #63e2b7;
+  box-shadow: 0 0 8px rgba(99, 226, 183, 0.6);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.status-stopped {
+  background-color: #6c757d;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 </style>

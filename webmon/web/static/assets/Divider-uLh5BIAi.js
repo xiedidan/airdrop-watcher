@@ -1,4 +1,4 @@
-import{K as v,aq as p,O as f,b,as as c,R as n,e as s,d as x,h as l,I as w,u as C,g as h,c7 as y,c as $,j as _}from"./index-DXyChYlF.js";const P=v("n-dialog-provider"),R=v("n-dialog-api"),z=v("n-message-api");function K(){const i=f(z,null);return i===null&&p("use-message","No outer <n-message-provider /> founded. See prerequisite in https://www.naiveui.com/en-US/os-theme/components/message for more details. If you want to use `useMessage` outside setup, please check https://www.naiveui.com/zh-CN/os-theme/components/message#Q-&-A."),i}const j=b("divider",`
+import{K as v,aq as p,O as f,b,as as c,R as n,e as s,d as x,h as l,I as w,u as C,g as h,c7 as y,c as $,j as _}from"./index-BXrhl0aj.js";const P=v("n-dialog-provider"),R=v("n-dialog-api"),z=v("n-message-api");function K(){const i=f(z,null);return i===null&&p("use-message","No outer <n-message-provider /> founded. See prerequisite in https://www.naiveui.com/en-US/os-theme/components/message for more details. If you want to use `useMessage` outside setup, please check https://www.naiveui.com/zh-CN/os-theme/components/message#Q-&-A."),i}const j=b("divider",`
  position: relative;
  display: flex;
  width: 100%;
