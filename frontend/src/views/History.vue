@@ -24,6 +24,7 @@ import {
   NStatistic,
   NGrid,
   NGridItem,
+  NDropdown,
   useMessage,
   type DataTableColumns,
 } from 'naive-ui'
@@ -37,6 +38,7 @@ import {
   TimeOutline,
   DocumentTextOutline,
   SparklesOutline,
+  DownloadOutline,
 } from '@vicons/ionicons5'
 import { historyApi } from '@/api'
 import { useTaskStore } from '@/stores/task'
@@ -349,6 +351,110 @@ onMounted(async () => {
   await taskStore.fetchTasks()
   await Promise.all([loadHistory(), loadStatistics()])
 })
+
+// 导出下拉菜单选项
+const exportOptions = [
+  { label: '导出为 JSON', key: 'json' },
+  { label: '导出为 CSV', key: 'csv' },
+]
+
+// 导出状态
+const isExporting = ref(false)
+
+// 处理导出
+const handleExport = async (format: string) => {
+  if (historyItems.value.length === 0) {
+    message.warning('没有可导出的数据')
+    return
+  }
+
+  isExporting.value = true
+  try {
+    const data = historyItems.value.map((item) => ({
+      id: item.id,
+      type: item.type,
+      task_id: item.task_id,
+      task_name: getTaskName(item.task_id),
+      url: item.url,
+      timestamp: item.timestamp,
+      success: item.data?.success !== false,
+      changed: item.data?.changed || false,
+      summary: item.data?.changes_summary || item.data?.change_summary || item.data?.ai_summary || '',
+      load_time: item.data?.load_time || 0,
+      content_size: item.data?.content_size || 0,
+      added_lines: item.data?.added_lines || 0,
+      removed_lines: item.data?.removed_lines || 0,
+      error_message: item.data?.error_message || '',
+    }))
+
+    let content: string
+    let filename: string
+    let mimeType: string
+
+    if (format === 'json') {
+      content = JSON.stringify(data, null, 2)
+      filename = `history_export_${new Date().toISOString().slice(0, 10)}.json`
+      mimeType = 'application/json'
+    } else {
+      // CSV 格式
+      const headers = [
+        'ID',
+        '类型',
+        '任务ID',
+        '任务名称',
+        'URL',
+        '时间',
+        '成功',
+        '有变化',
+        '摘要',
+        '加载时间(秒)',
+        '内容大小(字节)',
+        '新增行数',
+        '删除行数',
+        '错误信息',
+      ]
+      const rows = data.map((item) => [
+        item.id,
+        item.type === 'check_result' ? '检测结果' : '变化详情',
+        item.task_id,
+        `"${item.task_name.replace(/"/g, '""')}"`,
+        `"${item.url.replace(/"/g, '""')}"`,
+        item.timestamp,
+        item.success ? '是' : '否',
+        item.changed ? '是' : '否',
+        `"${item.summary.replace(/"/g, '""')}"`,
+        item.load_time.toFixed(2),
+        item.content_size,
+        item.added_lines,
+        item.removed_lines,
+        `"${item.error_message.replace(/"/g, '""')}"`,
+      ])
+      content = [headers.join(','), ...rows.map((row) => row.join(','))].join('\n')
+      // 添加 BOM 以支持 Excel 正确识别 UTF-8
+      content = '\uFEFF' + content
+      filename = `history_export_${new Date().toISOString().slice(0, 10)}.csv`
+      mimeType = 'text/csv;charset=utf-8'
+    }
+
+    // 下载文件
+    const blob = new Blob([content], { type: mimeType })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+
+    message.success(`已导出 ${data.length} 条记录`)
+  } catch (error) {
+    console.error('导出失败:', error)
+    message.error('导出失败')
+  } finally {
+    isExporting.value = false
+  }
+}
 </script>
 
 <template>
@@ -399,11 +505,27 @@ onMounted(async () => {
         <template #header>
           <n-space justify="space-between" align="center" style="width: 100%">
             <span class="page-title">变化历史</span>
-            <n-button quaternary circle @click="handleRefresh">
-              <template #icon>
-                <n-icon><RefreshOutline /></n-icon>
-              </template>
-            </n-button>
+            <n-space>
+              <!-- 导出按钮 -->
+              <n-dropdown
+                :options="exportOptions"
+                @select="handleExport"
+                :disabled="historyItems.length === 0"
+              >
+                <n-button :loading="isExporting" :disabled="historyItems.length === 0">
+                  <template #icon>
+                    <n-icon><DownloadOutline /></n-icon>
+                  </template>
+                  导出
+                </n-button>
+              </n-dropdown>
+              <!-- 刷新按钮 -->
+              <n-button quaternary circle @click="handleRefresh">
+                <template #icon>
+                  <n-icon><RefreshOutline /></n-icon>
+                </template>
+              </n-button>
+            </n-space>
           </n-space>
         </template>
 
