@@ -33,7 +33,7 @@ def set_start_time():
 
 
 @router.get(
-    "/",
+    "/status",
     response_model=StatusResponse,
     summary="获取服务状态",
     description="返回 WebMon 服务的当前运行状态"

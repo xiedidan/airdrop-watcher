@@ -6,11 +6,13 @@ FastAPI 应用入口
 
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, HTMLResponse
 
 from webmon.web.api.root import router as root_router, set_start_time
 from webmon.web.api.tasks import router as tasks_router
@@ -82,10 +84,44 @@ def create_app() -> FastAPI:
     app.include_router(settings_router)
     app.include_router(notification_router)
 
+    # 静态文件目录
+    static_dir = Path(__file__).parent / "static"
+
     # 挂载静态文件（如果存在）
-    static_dir = os.path.join(os.path.dirname(__file__), "static")
-    if os.path.exists(static_dir) and os.listdir(static_dir):
-        app.mount("/static", StaticFiles(directory=static_dir), name="static")
+    if static_dir.exists() and any(static_dir.iterdir()):
+        # 挂载 assets 子目录（JS/CSS 文件）
+        assets_dir = static_dir / "assets"
+        if assets_dir.exists():
+            app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+
+        # 挂载其他静态资源
+        app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+        # 添加前端路由处理 - SPA 支持
+        index_html = static_dir / "index.html"
+
+        @app.get("/", response_class=HTMLResponse)
+        async def serve_frontend():
+            """服务前端首页"""
+            if index_html.exists():
+                return FileResponse(str(index_html))
+            return HTMLResponse(content="<h1>WebMon</h1><p>Frontend not built. Run: cd frontend && npm run build</p>")
+
+        # 捕获所有非 API 路由，返回 index.html（SPA 路由支持）
+        @app.get("/{full_path:path}")
+        async def serve_spa(request: Request, full_path: str):
+            """SPA 路由支持 - 所有非 API/静态资源路径返回 index.html"""
+            # 排除 API 和静态资源路径
+            if full_path.startswith(("api/", "docs", "redoc", "openapi.json", "health", "status", "assets/", "static/")):
+                return None
+            # 检查是否是静态文件请求
+            static_file = static_dir / full_path
+            if static_file.exists() and static_file.is_file():
+                return FileResponse(str(static_file))
+            # 其他路径返回 index.html（SPA 路由）
+            if index_html.exists():
+                return FileResponse(str(index_html))
+            return HTMLResponse(content="<h1>404 Not Found</h1>", status_code=404)
 
     _app = app
     return app
