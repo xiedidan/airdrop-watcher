@@ -1,46 +1,115 @@
 # WebMon - 网页监控工具
 
-WebMon 是一个功能强大的网页监控工具，基于 Playwright 浏览器引擎，支持自动检测网页变化并通过多个平台发送通知。
+WebMon 是一个功能强大的网页监控工具，基于 Playwright 浏览器引擎，支持自动检测网页变化并通过多个平台发送通知。支持 AI 智能分析变化内容，提供 WebUI 管理界面。
 
 ## 特性
 
+### 核心功能
 - 基于 Playwright 的无头浏览器，支持 JavaScript 渲染
 - 智能变化检测算法（哈希对比、相似度分析）
 - 多平台通知支持（Discord、Telegram、飞书、PushPlus）
 - 灵活的任务调度系统，支持自定义检测间隔
-- CSS选择器支持，精准监控页面特定区域
+- CSS 选择器支持，精准监控页面特定区域
 - 完整的历史记录和变化追踪
 - 代理支持，适应各种网络环境
-- 详细的日志系统
-- 命令行界面，易于使用和自动化
+
+### AI 智能分析
+- 支持 OpenAI 兼容 API（OpenAI、DeepSeek、通义千问等）
+- 自动分析网页变化，生成自然语言摘要
+- 可自定义分析提示词模板
+- AI 分析结果集成到通知推送
+
+### WebUI 管理界面
+- 现代化 Web 界面（Vue 3 + Naive UI）
+- 实时监控状态仪表盘
+- 任务管理（增删改查）
+- 历史记录查看和 Diff 对比
+- 系统配置管理
+- SSE 实时事件推送
+
+### 安全特性
+- 敏感信息自动屏蔽（Token、API Key、密码等）
+- 日志中不泄露敏感数据
+- 支持环境变量配置敏感信息
+
+## 系统要求
+
+- Python 3.10+
+- Node.js 18+（仅 WebUI 开发需要）
+- 现代浏览器（Chromium，由 Playwright 自动安装）
 
 ## 快速开始
 
-### 1. 安装依赖
+### 方式一：使用 venv 部署（推荐）
 
 ```bash
-# 安装 Python 依赖
-pip3 install -r requirements.txt
+# 1. 克隆项目
+git clone https://github.com/xiedidan/airdrop-watcher.git
+cd airdrop-watcher
 
-# 安装 Playwright 浏览器
+# 2. 创建虚拟环境
+python3 -m venv venv
+
+# 3. 激活虚拟环境
+# Linux/macOS:
+source venv/bin/activate
+# Windows:
+# venv\Scripts\activate
+
+# 4. 安装依赖
+pip install -r requirements.txt
+
+# 5. 安装 Playwright 浏览器
 playwright install chromium
+
+# 6. 初始化配置
+python webmon.py init
+
+# 7. 启动服务
+python webmon.py start
 ```
 
-### 2. 初始化配置
+### 方式二：使用 Docker 部署
 
 ```bash
-python3 webmon.py init
+# 1. 克隆项目
+git clone https://github.com/xiedidan/airdrop-watcher.git
+cd airdrop-watcher
+
+# 2. 复制环境变量配置
+cp .env.docker.example .env
+
+# 3. 编辑 .env 配置通知平台凭据
+vim .env
+
+# 4. 构建并启动
+docker-compose up -d
+
+# 5. 查看日志
+docker-compose logs -f
 ```
 
-这将创建必要的配置文件和目录：
-- `config/config.json` - 主配置文件
-- `.env` - 环境变量配置
-- `data/` - 数据存储目录
-- `logs/` - 日志文件目录
+### 方式三：使用 WebUI
 
-### 3. 配置通知平台
+```bash
+# 启动 WebUI 服务（包含后端 API）
+python webmon.py web
 
-编辑 `.env` 文件，添加你的通知平台凭据：
+# 指定端口
+python webmon.py web --port 8080
+
+# 不自动打开浏览器
+python webmon.py web --no-browser
+
+# 开发模式（自动重载）
+python webmon.py web --reload
+```
+
+访问 http://localhost:8000 即可使用 WebUI 管理界面。
+
+## 配置通知平台
+
+编辑 `.env` 文件，添加通知平台凭据：
 
 ```bash
 # Discord Webhook
@@ -52,10 +121,14 @@ TELEGRAM_CHAT_ID=your_chat_id
 
 # 飞书 Webhook
 FEISHU_WEBHOOK_URL=your_webhook_url
-FEISHU_SECRET=your_secret
 
 # PushPlus
 PUSHPLUS_TOKEN=your_token
+
+# AI 分析配置（可选）
+AI_API_KEY=your_api_key
+AI_API_URL=https://api.openai.com/v1
+AI_MODEL=gpt-4o-mini
 
 # 代理设置（可选）
 HTTP_PROXY=http://127.0.0.1:10808
@@ -78,140 +151,140 @@ HTTPS_PROXY=http://127.0.0.1:10808
 }
 ```
 
-### 4. 添加监控任务
+## CLI 命令
+
+### 基础命令
 
 ```bash
-# 基本用法
-python3 webmon.py add https://www.example.com
+# 初始化配置
+python webmon.py init [--force]
 
-# 指定名称和检测间隔（秒）
-python3 webmon.py add https://github.com --name "GitHub主页" --interval 300
+# 添加监控任务
+python webmon.py add <url> [--name NAME] [--interval SECONDS] [--selector CSS] [--timeout MS]
 
-# 使用 CSS 选择器精准监控
-python3 webmon.py add https://news.ycombinator.com \
-  --name "Hacker News" \
-  --selector ".titleline" \
-  --interval 600
-
-# 设置超时时间
-python3 webmon.py add https://slow-site.com \
-  --timeout 30000
-```
-
-### 5. 启动监控服务
-
-```bash
-# 前台运行
-python3 webmon.py start
-
-# 查看服务状态
-python3 webmon.py status
-```
-
-### 6. 管理任务
-
-```bash
 # 列出所有任务
-python3 webmon.py list
-
-# 查看详细信息（JSON 格式）
-python3 webmon.py list --format json
+python webmon.py list [--format table|json|csv] [--filter all|enabled|disabled|error]
 
 # 删除任务
-python3 webmon.py remove <task_id>
+python webmon.py remove <task_id>
 
-# 查看变化历史
-python3 webmon.py history <task_id>
+# 编辑任务
+python webmon.py edit <task_id> [--name NAME] [--interval SECONDS] [--enabled true|false]
+
+# 启动监控服务
+python webmon.py start
+
+# 停止监控服务
+python webmon.py stop
+
+# 查看服务状态
+python webmon.py status [--verbose]
+
+# 测试通知
+python webmon.py test [--platform discord|telegram|feishu|pushplus]
+
+# 查看历史记录
+python webmon.py history <task_id> [--limit N] [--changes-only]
+
+# 启动 WebUI
+python webmon.py web [--port PORT] [--no-browser] [--reload]
+
+# 管理配置
+python webmon.py config [show|ai|set]
 ```
 
-### 7. 测试通知
+### 使用示例
 
 ```bash
-# 测试所有配置的平台
-python3 webmon.py test
+# 监控 Hacker News 首页标题
+python webmon.py add https://news.ycombinator.com \
+  --name "HN首页" \
+  --selector ".titleline" \
+  --interval 300
 
-# 测试特定平台
-python3 webmon.py test --platform discord
+# 监控 GitHub 仓库
+python webmon.py add https://github.com/user/repo \
+  --name "项目主页" \
+  --interval 3600
+
+# 添加带描述的任务（用于 AI 分析）
+python webmon.py add https://example.com \
+  --name "示例网站" \
+  --description "监控首页公告信息，关注价格和活动变化" \
+  --interval 600
 ```
 
-## 命令详解
+## 项目结构
 
-### init - 初始化配置
-
-```bash
-python3 webmon.py init [--force]
 ```
-
-创建配置文件和目录结构。使用 `--force` 覆盖现有配置。
-
-### add - 添加监控任务
-
-```bash
-python3 webmon.py add <url> [选项]
+airdrop-watcher/
+├── webmon.py                  # CLI 入口
+├── requirements.txt           # Python 依赖
+├── Dockerfile                 # Docker 镜像构建
+├── docker-compose.yml         # Docker 编排
+├── .env.example              # 环境变量示例
+├── .env.docker.example       # Docker 环境变量示例
+├── config/
+│   └── config.json           # 主配置文件
+├── data/
+│   └── history.json          # 变化历史
+├── logs/                     # 日志文件
+├── frontend/                 # Vue 3 前端
+│   ├── src/
+│   │   ├── views/           # 页面组件
+│   │   ├── stores/          # Pinia 状态管理
+│   │   ├── api/             # API 服务
+│   │   └── components/      # 通用组件
+│   └── package.json
+├── docs/                     # 文档
+└── webmon/                   # 核心代码
+    ├── cli/                  # CLI 模块
+    │   ├── argument_parser.py
+    │   ├── command_factory.py
+    │   └── commands/        # 命令实现
+    ├── config/              # 配置管理
+    │   ├── config_manager.py
+    │   ├── env_config.py
+    │   └── json_config.py
+    ├── models/              # 数据模型
+    │   ├── task.py
+    │   ├── check_result.py
+    │   └── change_details.py
+    ├── storage/             # 存储管理
+    │   ├── task_storage.py
+    │   └── history_storage.py
+    ├── browser/             # 浏览器引擎
+    │   ├── browser_engine.py
+    │   ├── resource_manager.py
+    │   └── network_config.py
+    ├── detection/           # 变化检测
+    │   ├── change_detector.py
+    │   └── similarity_detector.py
+    ├── notification/        # 通知推送
+    │   ├── service.py
+    │   ├── base_platform.py
+    │   └── platforms/
+    │       ├── discord_platform.py
+    │       ├── telegram_platform.py
+    │       ├── feishu_platform.py
+    │       └── pushplus_platform.py
+    ├── scheduler/           # 任务调度
+    │   ├── task_scheduler.py
+    │   ├── execution_engine.py
+    │   └── job_queue.py
+    ├── ai/                  # AI 分析
+    │   ├── service.py
+    │   └── models.py
+    ├── web/                 # WebUI 后端
+    │   ├── app.py
+    │   ├── api/            # API 路由
+    │   ├── schemas/        # 数据模型
+    │   └── services/       # 服务层
+    └── utils/              # 工具类
+        ├── logger.py
+        ├── security_manager.py  # 敏感信息保护
+        └── validators.py
 ```
-
-选项：
-- `--name, -n`: 任务名称（默认使用域名）
-- `--selector, -s`: CSS 选择器，监控页面特定区域
-- `--interval, -i`: 检测间隔（秒，默认 60）
-- `--timeout, -t`: 超时时间（毫秒，默认 30000）
-
-### remove - 删除任务
-
-```bash
-python3 webmon.py remove <task_id>
-```
-
-### list - 列出任务
-
-```bash
-python3 webmon.py list [--format FORMAT] [--filter STATUS]
-```
-
-选项：
-- `--format`: 输出格式（table/json/csv，默认 table）
-- `--filter`: 按状态过滤（all/enabled/disabled/error）
-
-### start - 启动服务
-
-```bash
-python3 webmon.py start [--daemon]
-```
-
-选项：
-- `--daemon, -d`: 后台运行模式
-
-### stop - 停止服务
-
-```bash
-python3 webmon.py stop
-```
-
-### status - 查看状态
-
-```bash
-python3 webmon.py status [--verbose]
-```
-
-显示服务运行状态、任务统计和资源使用情况。
-
-### test - 测试通知
-
-```bash
-python3 webmon.py test [--platform PLATFORM]
-```
-
-测试通知平台配置是否正确。
-
-### history - 查看历史
-
-```bash
-python3 webmon.py history <task_id> [--limit N] [--changes-only]
-```
-
-选项：
-- `--limit, -l`: 显示最近 N 条记录（默认 10）
-- `--changes-only`: 只显示有变化的记录
 
 ## 配置说明
 
@@ -225,6 +298,9 @@ python3 webmon.py history <task_id> [--limit N] [--changes-only]
 | TELEGRAM_CHAT_ID | Telegram Chat ID | 123456789 |
 | FEISHU_WEBHOOK_URL | 飞书 Webhook URL | https://open.feishu.cn/... |
 | PUSHPLUS_TOKEN | PushPlus Token | xxx |
+| AI_API_KEY | AI API 密钥 | sk-xxx |
+| AI_API_URL | AI API 地址 | https://api.openai.com/v1 |
+| AI_MODEL | AI 模型名称 | gpt-4o-mini |
 | HTTP_PROXY | HTTP 代理 | http://127.0.0.1:10808 |
 | HTTPS_PROXY | HTTPS 代理 | http://127.0.0.1:10808 |
 
@@ -233,7 +309,6 @@ python3 webmon.py history <task_id> [--limit N] [--changes-only]
 ```json
 {
   "version": "1.0.0",
-  "tasks": [],
   "settings": {
     "default_check_interval": 60,
     "max_concurrent_tasks": 5,
@@ -250,11 +325,18 @@ python3 webmon.py history <task_id> [--limit N] [--changes-only]
       }
     }
   },
+  "ai": {
+    "enabled": true,
+    "api_url": "${AI_API_URL}",
+    "api_key": "${AI_API_KEY}",
+    "model": "gpt-4o-mini",
+    "max_tokens": 2048,
+    "temperature": 0.7
+  },
   "scheduler": {
     "performance": {
       "max_concurrent_tasks": 15,
-      "max_browser_resources": 8,
-      "scheduler_loop_interval": 0.2
+      "max_browser_resources": 8
     },
     "retry": {
       "retry_attempts": 5,
@@ -273,182 +355,21 @@ python3 webmon.py history <task_id> [--limit N] [--changes-only]
 }
 ```
 
-### 调度器配置
-
-调度器支持高级配置，可以优化性能和资源使用：
-
-```json
-{
-  "scheduler": {
-    "performance": {
-      "max_concurrent_tasks": 15,        // 最大并发任务数
-      "max_browser_resources": 8,        // 最大浏览器资源数
-      "scheduler_loop_interval": 0.2     // 调度循环间隔（秒）
-    },
-    "retry": {
-      "retry_attempts": 5,                // 重试次数
-      "retry_delay": 120                  // 重试延迟（秒）
-    }
-  }
-}
-```
-
-详细文档：[docs/scheduler_config.md](docs/scheduler_config.md)
-
-### 日志配置
-
-日志系统支持灵活配置：
-
-```json
-{
-  "logging": {
-    "level": "INFO",                      // 日志级别
-    "log_dir": "logs",                    // 日志目录
-    "rotation": {
-      "type": "size",                     // 轮转类型: size/time
-      "interval": 7,                      // 时间轮转间隔（天）
-      "max_size": 5242880,                // 大小轮转阈值（字节，5MB）
-      "backup_count": 3                   // 保留备份数量
-    },
-    "format": {
-      "console": "{time:HH:mm:ss} | {level} | {message}",
-      "file": "{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name} | {message}"
-    },
-    "compression": false,                 // 是否压缩旧日志
-    "async_mode": false                   // 是否异步写入
-  }
-}
-```
-
-详细文档：[docs/logging_config_guide.md](docs/logging_config_guide.md)
-
-## 项目结构
-
-```
-airdrop-watcher/
-├── webmon.py                  # 主程序入口
-├── requirements.txt           # Python 依赖
-├── .env                       # 环境变量配置
-├── config/
-│   └── config.json            # 主配置文件
-├── data/
-│   ├── history.json           # 变化历史
-│   └── tasks.db               # 任务数据库
-├── logs/                      # 日志文件
-├── docs/                      # 文档
-└── webmon/                    # 核心代码
-    ├── cli/                   # CLI 模块
-    │   ├── argument_parser.py # 参数解析
-    │   └── commands/          # 命令实现
-    ├── config/                # 配置管理
-    │   ├── config_manager.py  # 配置管理器
-    │   ├── env_config.py      # 环境变量
-    │   └── json_config.py     # JSON 配置
-    ├── models/                # 数据模型
-    │   ├── task.py            # 任务模型
-    │   ├── check_result.py    # 检测结果
-    │   └── change_details.py  # 变化详情
-    ├── storage/               # 存储管理
-    │   ├── task_storage.py    # 任务存储
-    │   └── history_storage.py # 历史存储
-    ├── browser/               # 浏览器引擎
-    │   ├── browser_engine.py  # 浏览器管理
-    │   ├── resource_manager.py# 资源管理
-    │   └── network_config.py  # 网络配置
-    ├── detection/             # 变化检测
-    │   ├── change_detector.py # 检测器
-    │   ├── hash_detector.py   # 哈希检测
-    │   └── similarity_detector.py # 相似度检测
-    ├── notification/          # 通知推送
-    │   ├── service.py         # 通知服务
-    │   ├── base_platform.py   # 平台基类
-    │   └── platforms/         # 各平台实现
-    │       ├── discord_platform.py
-    │       ├── telegram_platform.py
-    │       ├── feishu_platform.py
-    │       └── pushplus_platform.py
-    ├── scheduler/             # 任务调度
-    │   ├── task_scheduler.py  # 调度器
-    │   ├── execution_engine.py# 执行引擎
-    │   ├── job_queue.py       # 任务队列
-    │   └── priority_manager.py# 优先级管理
-    └── utils/                 # 工具类
-        ├── logger.py          # 日志工具
-        └── validators.py      # 验证工具
-```
-
-## 使用示例
-
-### 监控新闻网站
-
-```bash
-# 监控 Hacker News 首页标题
-python3 webmon.py add https://news.ycombinator.com \
-  --name "HN首页" \
-  --selector ".titleline" \
-  --interval 300
-
-# 监控 Reddit 热门
-python3 webmon.py add https://www.reddit.com/r/programming \
-  --name "Reddit编程" \
-  --selector "div[data-testid='post-container']" \
-  --interval 600
-```
-
-### 监控价格变化
-
-```bash
-# 监控产品价格
-python3 webmon.py add https://www.amazon.com/dp/PRODUCT_ID \
-  --name "iPhone价格" \
-  --selector ".a-price-whole" \
-  --interval 1800
-```
-
-### 监控 GitHub 仓库
-
-```bash
-# 监控 Star 数
-python3 webmon.py add https://github.com/user/repo \
-  --name "项目Star数" \
-  --selector "#repo-stars-counter-star" \
-  --interval 3600
-```
-
-### 本地测试
-
-项目包含测试脚本，可以快速验证功能：
-
-```bash
-# 启动测试服务器（监听 8001 端口）
-python3 test_server.py &
-
-# 添加本地测试任务
-python3 webmon.py add http://localhost:8001 \
-  --name "本地测试" \
-  --interval 60
-
-# 启动监控
-python3 webmon.py start
-
-# 触发变化（访问测试页面，计数器会增加）
-curl http://localhost:8001
-
-# 查看 Discord 频道，应该收到变化通知
-```
-
 ## 已实现功能
 
 ### CLI 命令系统
 - [x] init - 初始化配置
 - [x] add - 添加监控任务
 - [x] remove - 删除任务
+- [x] edit - 编辑任务
 - [x] list - 列出任务
 - [x] start - 启动服务
 - [x] stop - 停止服务
 - [x] status - 查看状态
 - [x] test - 测试通知
 - [x] history - 查看历史
+- [x] config - 管理配置
+- [x] web - 启动 WebUI
 
 ### 核心功能
 - [x] Playwright 浏览器引擎集成
@@ -460,12 +381,28 @@ curl http://localhost:8001
 - [x] 代理支持
 - [x] 日志系统
 - [x] 资源管理和优化
+- [x] 敏感信息自动保护
+
+### AI 分析
+- [x] OpenAI 兼容 API 支持
+- [x] 提示词模板系统
+- [x] 集成到通知流程
+
+### WebUI
+- [x] FastAPI 后端框架
+- [x] Vue 3 前端框架
+- [x] Dashboard 仪表盘
+- [x] 任务管理页面
+- [x] 历史记录页面
+- [x] 系统设置页面
+- [x] SSE 实时事件推送
+- [x] Docker 部署支持
 
 ### 测试状态
 - [x] Discord 通知 - 已测试通过 ✅
-- [x] 本地测试服务器 - 正常运行 ✅
 - [x] 变化检测 - 功能正常 ✅
 - [x] 任务调度 - 稳定运行 ✅
+- [x] WebUI - 功能正常 ✅
 - [ ] Telegram 通知 - 待测试
 - [ ] 飞书通知 - 待测试
 - [ ] PushPlus 通知 - 待测试
@@ -486,13 +423,26 @@ playwright install-deps
 
 ```bash
 # 测试通知配置
-python3 webmon.py test --platform discord
+python webmon.py test --platform discord
 
 # 检查环境变量
 cat .env | grep DISCORD
 
 # 查看日志
 tail -f logs/webmon.log
+```
+
+### WebUI 无法访问
+
+```bash
+# 检查端口是否被占用
+lsof -i :8000
+
+# 查看 WebUI 日志
+python webmon.py web --reload
+
+# 检查前端构建
+cd frontend && npm run build
 ```
 
 ### 代理问题
@@ -507,61 +457,56 @@ echo "HTTP_PROXY=http://127.0.0.1:10808" >> .env
 echo "HTTPS_PROXY=http://127.0.0.1:10808" >> .env
 ```
 
-### 任务不执行
+## 开发指南
+
+### 本地开发环境
 
 ```bash
-# 查看任务状态
-python3 webmon.py list
+# 安装开发依赖
+pip install -r requirements.txt
 
-# 检查服务状态
-python3 webmon.py status
+# 安装前端依赖
+cd frontend && npm install
 
-# 查看日志
-tail -f logs/webmon.log
+# 启动前端开发服务器
+npm run dev
+
+# 启动后端开发服务器（另一个终端）
+python webmon.py web --reload
 ```
 
-## 性能优化
-
-### 调整并发数
-
-编辑 `config/config.json`：
-
-```json
-{
-  "scheduler": {
-    "performance": {
-      "max_concurrent_tasks": 20,
-      "max_browser_resources": 10
-    }
-  }
-}
-```
-
-### 优化检测间隔
+### 运行测试
 
 ```bash
-# 对于不常变化的页面，增加检测间隔
-python3 webmon.py add https://stable-site.com --interval 3600
+# 运行所有测试
+python -m pytest tests/ -v
 
-# 对于快速变化的页面，减少检测间隔
-python3 webmon.py add https://live-site.com --interval 30
+# 运行特定测试
+python -m pytest webmon/tests/unit/test_security_manager.py -v
+
+# 生成覆盖率报告
+python -m pytest tests/ --cov=webmon --cov-report=html
 ```
 
-### 使用选择器
-
-使用 CSS 选择器只监控页面特定部分，减少误报：
+### 代码格式化
 
 ```bash
-python3 webmon.py add https://example.com \
-  --selector "#main-content"
+# 格式化代码
+black webmon/
+
+# 检查代码风格
+flake8 webmon/
+
+# 类型检查
+mypy webmon/
 ```
 
 ## 开发文档
 
 - [设计文档](docs/design.md)
-- [调度器配置](docs/scheduler_config.md)
-- [日志配置指南](docs/logging_config_guide.md)
-- [任务清单](docs/tasks.md)
+- [WebUI 设计文档](docs/webui_design.md)
+- [API 文档](docs/api.md)
+- [任务清单](TASKS.md)
 
 ## 贡献指南
 
@@ -580,6 +525,9 @@ python3 webmon.py add https://example.com \
 ## 致谢
 
 - [Playwright](https://playwright.dev/) - 浏览器自动化
+- [FastAPI](https://fastapi.tiangolo.com/) - Web 框架
+- [Vue.js](https://vuejs.org/) - 前端框架
+- [Naive UI](https://www.naiveui.com/) - UI 组件库
 - [Loguru](https://github.com/Delgan/loguru) - 日志系统
 - [BeautifulSoup4](https://www.crummy.com/software/BeautifulSoup/) - HTML 解析
 
