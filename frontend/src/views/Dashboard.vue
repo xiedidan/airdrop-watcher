@@ -25,6 +25,8 @@ import {
   FlashOutline,
   TrendingUpOutline,
   WifiOutline,
+  PlayCircleOutline,
+  StopCircleOutline,
 } from '@vicons/ionicons5'
 import { useMonitorStore } from '@/stores/monitor'
 import { useTaskStore } from '@/stores/task'
@@ -157,6 +159,15 @@ const goToHistory = () => {
   router.push('/history')
 }
 
+// 监控控制
+const handleToggleMonitor = async () => {
+  if (monitorStore.isRunning) {
+    await monitorStore.stopMonitor()
+  } else {
+    await monitorStore.startMonitor()
+  }
+}
+
 // 初始化加载数据（后续由 SSE 自动更新）
 onMounted(async () => {
   await loadData()
@@ -182,11 +193,28 @@ onMounted(async () => {
             <span>SSE 实时连接已建立，数据将自动更新</span>
           </n-tooltip>
         </n-space>
-        <n-button quaternary circle @click="handleRefresh" :loading="isLoading">
-          <template #icon>
-            <n-icon><RefreshOutline /></n-icon>
-          </template>
-        </n-button>
+        <n-space align="center" :size="12">
+          <!-- 监控控制按钮 -->
+          <n-button
+            :type="monitorStore.isRunning ? 'error' : 'success'"
+            @click="handleToggleMonitor"
+            :loading="monitorStore.loading"
+          >
+            <template #icon>
+              <n-icon>
+                <StopCircleOutline v-if="monitorStore.isRunning" />
+                <PlayCircleOutline v-else />
+              </n-icon>
+            </template>
+            {{ monitorStore.isRunning ? '停止监控' : '开始监控' }}
+          </n-button>
+          <!-- 刷新按钮 -->
+          <n-button quaternary circle @click="handleRefresh" :loading="isLoading">
+            <template #icon>
+              <n-icon><RefreshOutline /></n-icon>
+            </template>
+          </n-button>
+        </n-space>
       </div>
 
       <!-- 统计卡片 -->
