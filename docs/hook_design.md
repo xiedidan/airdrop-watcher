@@ -1,10 +1,10 @@
 # 页面差异事件自定义触发机制设计文档
 
-> **版本**: 1.0 (草稿)
+> **版本**: 1.2
 > **任务编号**: #097
 > **作者**: Claude
 > **日期**: 2025-12-29
-> **状态**: 待审批
+> **状态**: ✅ 已审批
 
 ---
 
@@ -35,30 +35,11 @@
 
 ## 2. 系统架构
 
-### 2.1 整体架构图
+### 2.1 整体架构
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         TaskScheduler                                │
-│                                                                      │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────────────┐   │
-│  │ ChangeDetector│ -> │  HookManager │ -> │ NotificationService │   │
-│  └──────────────┘    └──────────────┘    └──────────────────────┘   │
-│                              │                                       │
-│                              v                                       │
-│                      ┌──────────────┐                                │
-│                      │ HookExecutor │                                │
-│                      └──────────────┘                                │
-│                              │                                       │
-│              ┌───────────────┼───────────────┐                       │
-│              v               v               v                       │
-│       ┌──────────┐    ┌──────────┐    ┌──────────┐                  │
-│       │Shell脚本 │    │Python脚本│    │  其他    │                  │
-│       └──────────┘    └──────────┘    └──────────┘                  │
-└─────────────────────────────────────────────────────────────────────┘
-```
+Hook 机制作为 TaskScheduler 和 NotificationService 之间的中间层存在。当变化检测完成后，系统会先调用 HookManager 处理相关钩子，然后再进行通知发送。
 
-### 2.2 核心组件
+核心组件包括：
 
 | 组件 | 职责 |
 |------|------|
@@ -67,54 +48,53 @@
 | **HookConfig** | Hook 配置数据模型 |
 | **HookResult** | 执行结果数据模型 |
 
+### 2.2 与现有系统的集成点
+
+Hook 机制需要集成到以下现有模块：
+
+1. **TaskScheduler**: 在 `_execute_task` 方法中，变化检测完成后调用 HookManager
+2. **NotificationService**: 在通知发送前后提供触发点
+3. **ConfigManager**: 扩展配置解析，支持 hooks 配置节点
+4. **Task 模型**: 添加 hooks 字段存储任务级 Hook 配置
+
 ---
 
 ## 3. 触发时机设计
 
 ### 3.1 触发点定义
 
-定义以下触发时机（按执行顺序）：
+系统定义四个触发时机，按执行顺序排列：
 
-| 触发点 | 名称 | 时机 | 典型用途 |
-|--------|------|------|----------|
-| `on_change_detected` | 变化检测后 | 检测到变化，通知发送前 | 数据预处理、内容过滤 |
-| `on_before_notify` | 通知前 | AI分析完成，即将发送通知 | 修改通知内容、条件通知 |
-| `on_after_notify` | 通知后 | 通知发送完成后 | 后续操作、日志记录 |
-| `on_notify_failed` | 通知失败 | 通知发送失败时 | 备用通知、告警升级 |
+| 触发点 | 时机 | 典型用途 |
+|--------|------|----------|
+| `on_change_detected` | 检测到变化，通知发送前 | 数据预处理、内容过滤、条件判断 |
+| `on_before_notify` | AI分析完成，即将发送通知 | 修改通知内容、添加附加信息 |
+| `on_after_notify` | 通知发送完成后 | 后续操作、日志记录、触发其他系统 |
+| `on_notify_failed` | 通知发送失败时 | 备用通知、告警升级、错误处理 |
 
 ### 3.2 执行流程
 
-```
-变化检测完成
-      │
-      v
-┌─────────────────────────┐
-│  on_change_detected     │ <-- 可中断：返回 skip_notify=true 跳过通知
-└─────────────────────────┘
-      │
-      v
-   AI 分析
-      │
-      v
-┌─────────────────────────┐
-│  on_before_notify       │ <-- 可修改：可修改通知内容
-└─────────────────────────┘
-      │
-      v
-   发送通知
-      │
-      ├─────── 成功 ──────┐
-      │                   v
-      │       ┌─────────────────────────┐
-      │       │   on_after_notify       │
-      │       └─────────────────────────┘
-      │
-      └─────── 失败 ──────┐
-                          v
-              ┌─────────────────────────┐
-              │   on_notify_failed      │
-              └─────────────────────────┘
-```
+整体执行流程如下：
+
+1. 变化检测模块检测到页面变化
+2. 系统触发 `on_change_detected` 钩子
+   - 此钩子可以返回特殊标记来跳过后续通知流程
+3. AI 分析服务对变化内容进行分析（如果启用）
+4. 系统触发 `on_before_notify` 钩子
+   - 此钩子可以修改即将发送的通知内容
+5. 通知服务发送通知到各平台
+6. 根据发送结果：
+   - 成功：触发 `on_after_notify` 钩子
+   - 失败：触发 `on_notify_failed` 钩子
+
+### 3.3 钩子的控制能力
+
+所有触发点的钩子均为**只读/旁路执行**，不影响主流程：
+
+- **on_change_detected**: 仅用于数据预处理或外部系统通知，不能跳过通知流程
+- **on_before_notify**: 仅用于记录或外部操作，不能修改通知内容
+- **on_after_notify**: 用于后续处理，如触发其他系统
+- **on_notify_failed**: 用于错误处理，如备用通知渠道
 
 ---
 
@@ -122,282 +102,170 @@
 
 ### 4.1 配置层级
 
-支持两个配置层级：
+系统支持两个配置层级：
 
-1. **全局配置** (`config.json` 中的 `hooks` 节点)：应用于所有任务
-2. **任务级配置** (`task.hooks`)：仅应用于特定任务，优先级高于全局配置
+1. **全局配置**: 定义在 `config.json` 的 `hooks` 节点中，应用于所有任务
+2. **任务级配置**: 定义在各任务的 `hooks` 字段中，仅应用于该任务
 
-### 4.2 配置格式
+当同一触发点同时存在全局和任务级 Hook 时，执行顺序为：先执行全局 Hook，再执行任务级 Hook。
 
-#### 4.2.1 全局 Hook 配置
+### 4.2 配置结构
 
-```json
-{
-  "hooks": {
-    "enabled": true,
-    "global_hooks": {
-      "on_change_detected": [
-        {
-          "name": "log_all_changes",
-          "type": "shell",
-          "script": "/path/to/scripts/log_change.sh",
-          "enabled": true,
-          "timeout": 30,
-          "async": true
-        }
-      ],
-      "on_after_notify": [
-        {
-          "name": "backup_to_db",
-          "type": "python",
-          "script": "/path/to/scripts/backup.py",
-          "enabled": true,
-          "timeout": 60,
-          "async": true
-        }
-      ]
-    },
-    "defaults": {
-      "timeout": 30,
-      "async": true,
-      "max_retries": 0,
-      "working_dir": null
-    }
-  }
-}
-```
+#### 全局 Hook 配置
 
-#### 4.2.2 任务级 Hook 配置
+在 `config.json` 根节点添加 `hooks` 配置块：
 
-```json
-{
-  "id": "task_123",
-  "name": "币安Alpha活动",
-  "url": "https://example.com",
-  "hooks": {
-    "on_change_detected": [
-      {
-        "name": "binance_analyzer",
-        "type": "python",
-        "script": "/home/user/scripts/analyze_binance.py",
-        "enabled": true,
-        "timeout": 60,
-        "async": false,
-        "args": ["--mode", "detail"]
-      }
-    ],
-    "on_after_notify": [
-      {
-        "name": "trigger_trade",
-        "type": "shell",
-        "script": "/home/user/scripts/trade.sh",
-        "enabled": true,
-        "timeout": 120,
-        "async": true,
-        "condition": "change_type == 'content_change'"
-      }
-    ]
-  }
-}
-```
+- `enabled`: 全局开关，控制整个 Hook 机制是否启用
+- `global_hooks`: 按触发点组织的全局 Hook 列表
+- `defaults`: 默认配置值，当单个 Hook 未指定时使用
 
-### 4.3 配置字段说明
+#### 任务级 Hook 配置
 
-| 字段 | 类型 | 必需 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| `name` | string | 是 | - | Hook 名称，用于日志和识别 |
-| `type` | string | 是 | - | 脚本类型：`shell` 或 `python` |
-| `script` | string | 是 | - | 脚本路径（绝对路径或相对于项目根目录） |
-| `enabled` | bool | 否 | true | 是否启用此 Hook |
-| `timeout` | int | 否 | 30 | 执行超时时间（秒） |
-| `async` | bool | 否 | true | 是否异步执行（不阻塞后续流程） |
-| `args` | array | 否 | [] | 额外的命令行参数 |
-| `env` | object | 否 | {} | 额外的环境变量 |
-| `condition` | string | 否 | null | 执行条件表达式（Python 语法） |
-| `working_dir` | string | 否 | 脚本所在目录 | 工作目录 |
-| `max_retries` | int | 否 | 0 | 失败时最大重试次数 |
+在 Task 模型中添加 `hooks` 字段，结构与全局配置中的 `global_hooks` 相同，按触发点组织 Hook 列表。
+
+### 4.3 单个 Hook 的配置项
+
+每个 Hook 需要配置以下信息：
+
+| 配置项 | 说明 | 是否必需 | 默认值 |
+|--------|------|----------|--------|
+| `name` | Hook 名称，用于日志和识别 | 是 | - |
+| `type` | 脚本类型，支持 `shell` 或 `python` | 是 | - |
+| `script` | 脚本路径，支持绝对路径或相对于项目根目录 | 是 | - |
+| `enabled` | 是否启用此 Hook | 否 | true |
+| `timeout` | 执行超时时间（秒） | 否 | 30 |
+| `async` | 是否异步执行（不阻塞后续流程） | 否 | true |
+| `args` | 额外的命令行参数列表 | 否 | 空 |
+| `env` | 额外的环境变量 | 否 | 空 |
+| `condition` | 执行条件表达式 | 否 | 无（始终执行） |
+| `working_dir` | 工作目录 | 否 | 脚本所在目录 |
+| `max_retries` | 失败时最大重试次数 | 否 | 0 |
+
+### 4.4 条件表达式
+
+`condition` 字段支持简单的条件表达式，用于控制 Hook 是否执行。表达式中可使用以下变量：
+
+- `change_type`: 变化类型（如 `content_change`）
+- `similarity`: 相似度数值
+- `task_name`: 任务名称
+- `has_ai_analysis`: 是否有 AI 分析结果
+
+示例：`change_type == 'content_change' and similarity < 0.9`
 
 ---
 
 ## 5. 参数传递设计
 
-### 5.1 传递方式
+### 5.1 传递方式选择
 
-支持三种参数传递方式（可组合使用）：
+系统采用 **环境变量 + 标准输入 (stdin) JSON** 的组合方式传递参数：
 
-| 方式 | 优点 | 缺点 | 适用场景 |
-|------|------|------|----------|
-| **环境变量** | 简单、通用 | 长度限制、特殊字符处理 | 简单信息传递 |
-| **命令行参数** | 直观、兼容性好 | 长度限制、需转义 | 简单信息传递 |
-| **标准输入 (stdin)** | 无长度限制 | 需脚本支持 | 复杂数据传递 |
-| **临时文件** | 无长度限制、可持久化 | 需清理 | 大数据量传递 |
+- **环境变量**: 传递常用的简单信息，便于脚本快速访问
+- **stdin JSON**: 传递完整的上下文数据，支持复杂场景
 
-**推荐方案**: 采用**环境变量 + stdin JSON** 组合方式。
+这种组合方式兼顾了简单脚本的便利性和复杂脚本的完整性需求。
 
 ### 5.2 环境变量
 
 所有 Hook 脚本执行时都会注入以下环境变量：
 
-#### 5.2.1 任务相关
+**任务相关**:
+- `WEBMON_TASK_ID`: 任务 ID
+- `WEBMON_TASK_NAME`: 任务名称
+- `WEBMON_TASK_URL`: 监控 URL
+- `WEBMON_TASK_DESCRIPTION`: 任务描述
 
-| 变量名 | 说明 | 示例 |
-|--------|------|------|
-| `WEBMON_TASK_ID` | 任务 ID | `1b77c6d2` |
-| `WEBMON_TASK_NAME` | 任务名称 | `币安Alpha活动` |
-| `WEBMON_TASK_URL` | 监控 URL | `https://example.com` |
-| `WEBMON_TASK_DESCRIPTION` | 任务描述 | `监控币安Alpha活动...` |
+**变化相关**:
+- `WEBMON_CHANGE_DETECTED`: 是否检测到变化（true/false）
+- `WEBMON_CHANGE_TYPE`: 变化类型
+- `WEBMON_CHANGE_TIME`: 变化检测时间（ISO 格式）
+- `WEBMON_SIMILARITY`: 相似度百分比
 
-#### 5.2.2 变化相关
+**执行上下文**:
+- `WEBMON_HOOK_NAME`: 当前 Hook 名称
+- `WEBMON_HOOK_TRIGGER`: 触发点名称
+- `WEBMON_PROJECT_ROOT`: 项目根目录路径
+- `WEBMON_DATA_DIR`: 数据目录路径
 
-| 变量名 | 说明 | 示例 |
-|--------|------|------|
-| `WEBMON_CHANGE_DETECTED` | 是否检测到变化 | `true` / `false` |
-| `WEBMON_CHANGE_TYPE` | 变化类型 | `content_change` |
-| `WEBMON_CHANGE_TIME` | 变化检测时间 (ISO 格式) | `2025-12-29T10:30:00` |
-| `WEBMON_SIMILARITY` | 相似度百分比 | `85.5` |
+### 5.3 stdin JSON 数据
 
-#### 5.2.3 执行上下文
+通过标准输入传递的 JSON 数据包含完整的上下文信息：
 
-| 变量名 | 说明 | 示例 |
-|--------|------|------|
-| `WEBMON_HOOK_NAME` | 当前 Hook 名称 | `binance_analyzer` |
-| `WEBMON_HOOK_TRIGGER` | 触发点 | `on_change_detected` |
-| `WEBMON_PROJECT_ROOT` | 项目根目录 | `/home/xd/project/airdrop-watcher` |
-| `WEBMON_DATA_DIR` | 数据目录 | `/home/xd/project/airdrop-watcher/data` |
+- `trigger`: 触发点名称
+- `timestamp`: 触发时间
+- `task`: 任务完整信息（ID、名称、URL、描述等）
+- `change`: 变化详情（类型、相似度、摘要、新旧内容、diff 等）
+- `ai_analysis`: AI 分析结果（如果有）
+- `notification`: 通知状态信息
 
-### 5.3 stdin JSON 格式
+内容字段会进行截断处理（如限制 2000 字符），避免数据量过大。
 
-对于需要传递复杂数据的场景，通过 stdin 传递完整的 JSON 数据：
+### 5.4 脚本如何使用这些参数
 
-```json
-{
-  "trigger": "on_change_detected",
-  "timestamp": "2025-12-29T10:30:00+08:00",
-  "task": {
-    "id": "1b77c6d2",
-    "name": "币安Alpha活动",
-    "url": "https://example.com",
-    "description": "监控币安Alpha活动页面变化"
-  },
-  "change": {
-    "detected": true,
-    "type": "content_change",
-    "similarity": 0.855,
-    "summary": "检测到内容变化",
-    "old_content": "...(截断至2000字符)...",
-    "new_content": "...(截断至2000字符)...",
-    "diff": "--- old\n+++ new\n@@ -1,3 +1,3 @@\n..."
-  },
-  "ai_analysis": {
-    "enabled": true,
-    "summary": "1. 新增项目: XYZ\n2. 更新时间: 12:00 → 14:00",
-    "model": "deepseek-reasoner"
-  },
-  "notification": {
-    "platforms": ["discord"],
-    "status": "pending"
-  }
-}
-```
+Shell 脚本可以直接通过 `$WEBMON_TASK_NAME` 等方式访问环境变量，通过 `cat` 或管道读取 stdin 的 JSON 数据，配合 `jq` 工具解析。
 
-### 5.4 脚本示例
-
-#### Shell 脚本示例
-
-```bash
-#!/bin/bash
-# /home/user/scripts/log_change.sh
-
-echo "Hook triggered: $WEBMON_HOOK_NAME"
-echo "Task: $WEBMON_TASK_NAME"
-echo "URL: $WEBMON_TASK_URL"
-echo "Change detected: $WEBMON_CHANGE_DETECTED"
-
-# 读取 stdin JSON
-PAYLOAD=$(cat)
-echo "Full payload: $PAYLOAD"
-
-# 使用 jq 解析
-CHANGE_TYPE=$(echo "$PAYLOAD" | jq -r '.change.type')
-echo "Change type: $CHANGE_TYPE"
-
-# 记录到日志
-echo "[$(date)] Task=$WEBMON_TASK_NAME Type=$CHANGE_TYPE" >> /var/log/webmon_hooks.log
-```
-
-#### Python 脚本示例
-
-```python
-#!/usr/bin/env python3
-# /home/user/scripts/analyze_binance.py
-
-import os
-import sys
-import json
-
-def main():
-    # 从环境变量获取基本信息
-    task_name = os.environ.get('WEBMON_TASK_NAME')
-    task_url = os.environ.get('WEBMON_TASK_URL')
-    change_detected = os.environ.get('WEBMON_CHANGE_DETECTED') == 'true'
-
-    print(f"Processing task: {task_name}")
-
-    # 从 stdin 读取完整数据
-    payload = json.load(sys.stdin)
-
-    change_info = payload.get('change', {})
-    new_content = change_info.get('new_content', '')
-
-    # 自定义分析逻辑
-    if '新增项目' in new_content:
-        print("发现新项目！")
-        # 执行后续操作...
-
-    # 可通过 stdout 返回结果供日志记录
-    result = {
-        "status": "success",
-        "message": "Analysis completed",
-        "findings": ["new_project_detected"]
-    }
-    print(json.dumps(result))
-
-if __name__ == '__main__':
-    main()
-```
+Python 脚本可以通过 `os.environ` 访问环境变量，通过 `sys.stdin` 读取 JSON 数据并用 `json.load()` 解析。
 
 ---
 
 ## 6. 执行策略
 
-### 6.1 同步 vs 异步执行
+### 6.1 同步与异步执行
 
-| 模式 | 特点 | 适用场景 |
-|------|------|----------|
-| **同步 (`async: false`)** | 阻塞后续流程，可获取执行结果 | 需要根据脚本结果决定是否继续 |
-| **异步 (`async: true`)** | 不阻塞后续流程，后台执行 | 不影响主流程的辅助任务 |
+系统支持两种执行模式：
+
+**同步执行 (`async: false`)**:
+- 脚本执行完成后才继续后续流程
+- 可以获取脚本的执行结果和返回值
+- 适用于需要根据脚本结果决定后续行为的场景
+
+**异步执行 (`async: true`)**:
+- 脚本在后台执行，不阻塞主流程
+- 主流程立即继续，不等待脚本完成
+- 适用于耗时较长但不影响主流程的任务
+
+默认采用异步执行，以避免脚本执行时间过长影响监控的实时性。
 
 ### 6.2 超时控制
 
-- 默认超时: 30 秒
-- 最大超时: 300 秒 (5 分钟)
-- 超时行为: 终止进程 (SIGTERM)，5秒后强制 SIGKILL
+为防止脚本执行时间过长：
+
+- 默认超时时间：30 秒
+- 最大允许超时：300 秒（5 分钟）
+- 超时处理：先发送 SIGTERM 信号，等待 5 秒后强制 SIGKILL
 
 ### 6.3 错误处理
 
+系统对各类错误采取不同的处理策略：
+
 | 错误类型 | 处理方式 |
 |----------|----------|
-| 脚本不存在 | 记录错误日志，跳过此 Hook |
-| 权限不足 | 记录错误日志，跳过此 Hook |
+| 脚本文件不存在 | 记录错误日志，跳过此 Hook，继续执行后续 Hook |
+| 执行权限不足 | 记录错误日志，跳过此 Hook |
 | 执行超时 | 终止进程，记录超时日志 |
-| 非零退出码 | 记录错误日志，可配置重试 |
-| 异常崩溃 | 记录异常日志，继续后续 Hook |
+| 脚本返回非零退出码 | 记录错误日志，根据配置决定是否重试 |
+| 脚本运行时崩溃 | 记录异常日志，继续执行后续 Hook |
+
+单个 Hook 的失败不会影响其他 Hook 的执行，也不会影响主监控流程（除非是同步执行且配置为可中断）。
 
 ### 6.4 执行顺序
 
-同一触发点的多个 Hook 按配置顺序依次执行：
-- 全局 Hook 先于任务级 Hook
-- 同一级别内按配置数组顺序执行
+同一触发点的多个 Hook 按以下顺序执行：
+
+1. 全局 Hook（按配置数组顺序）
+2. 任务级 Hook（按配置数组顺序）
+
+对于同步 Hook，严格按顺序逐个执行；对于异步 Hook，可能并行执行。
+
+每个 Hook 独立执行，不支持 Hook 之间的数据传递。
+
+### 6.5 重试机制
+
+当 `max_retries` 大于 0 时，脚本执行失败后会进行重试：
+
+- 重试间隔：采用指数退避策略（1秒、2秒、4秒...）
+- 重试次数用尽后，记录最终失败日志
+- 仅对可重试错误（如超时、非零退出码）进行重试，权限错误等不重试
 
 ---
 
@@ -405,411 +273,243 @@ if __name__ == '__main__':
 
 ### 7.1 脚本路径验证
 
-```python
-class ScriptValidator:
-    """脚本路径验证器"""
+为防止恶意脚本执行，系统对脚本路径进行验证：
 
-    # 允许的脚本目录（白名单）
-    ALLOWED_DIRS = [
-        '/home/*/scripts/',
-        '/home/*/webmon/hooks/',
-        '{PROJECT_ROOT}/scripts/',
-        '{PROJECT_ROOT}/hooks/',
-    ]
+**允许的路径范围（白名单）**:
+- 用户主目录下的 `scripts/` 或 `webmon/hooks/` 目录
+- 项目根目录下的 `scripts/` 或 `hooks/` 目录
 
-    # 禁止的路径模式（黑名单）
-    BLOCKED_PATTERNS = [
-        '/etc/',
-        '/usr/',
-        '/bin/',
-        '/sbin/',
-        '/../',
-        '..',
-    ]
-```
+**禁止的路径（黑名单）**:
+- 系统目录（如 `/etc/`、`/usr/`、`/bin/`）
+- 包含路径遍历符号（如 `../`）
 
 ### 7.2 执行权限控制
 
-1. **脚本必须存在且可执行**: 验证文件存在性和执行权限
-2. **不使用 shell 扩展**: 避免命令注入
-3. **限制环境变量大小**: 防止缓冲区溢出
-4. **用户权限继承**: 脚本以当前 WebMon 进程用户身份运行
+- 脚本必须存在且具有可执行权限
+- 不使用 shell 扩展执行命令，避免命令注入
+- 脚本以 WebMon 进程的用户身份运行，继承其权限
 
 ### 7.3 资源限制
 
-| 资源 | 限制值 | 说明 |
-|------|--------|------|
-| CPU 时间 | 300秒 | 防止无限循环 |
-| 内存 | 512MB | 防止内存耗尽 |
-| 文件描述符 | 256 | 防止资源泄露 |
-| 子进程数 | 16 | 防止 fork 炸弹 |
+为防止脚本消耗过多系统资源，采用固定的资源限制（不可配置）：
 
-### 7.4 敏感信息保护
+| 资源 | 限制 | 说明 |
+|------|------|------|
+| CPU 时间 | 300 秒 | 防止无限循环 |
+| 内存 | 512 MB | 防止内存耗尽 |
+| 文件描述符 | 256 个 | 防止资源泄露 |
+| 子进程数 | 16 个 | 防止 fork 炸弹 |
 
-- 环境变量中的敏感信息（如 API Key）不会传递给 Hook 脚本
-- 日志输出自动过滤敏感数据
+注：资源限制在 Linux 系统上通过 `resource` 模块实现，其他系统可能有所不同。
 
----
+### 7.4 脚本来源限制
 
-## 8. 数据模型
+仅支持本地脚本，不支持远程脚本（如通过 HTTP URL 指定）。脚本必须预先部署在服务器上。
 
-### 8.1 HookConfig 模型
+### 7.5 敏感信息保护
 
-```python
-@dataclass
-class HookConfig:
-    """Hook 配置数据模型"""
-
-    name: str                           # Hook 名称
-    type: str                           # 脚本类型: shell / python
-    script: str                         # 脚本路径
-    enabled: bool = True                # 是否启用
-    timeout: int = 30                   # 超时时间（秒）
-    async_exec: bool = True             # 是否异步执行
-    args: List[str] = field(default_factory=list)  # 额外参数
-    env: Dict[str, str] = field(default_factory=dict)  # 额外环境变量
-    condition: Optional[str] = None     # 执行条件
-    working_dir: Optional[str] = None   # 工作目录
-    max_retries: int = 0                # 最大重试次数
-```
-
-### 8.2 HookResult 模型
-
-```python
-@dataclass
-class HookResult:
-    """Hook 执行结果数据模型"""
-
-    hook_name: str                      # Hook 名称
-    trigger: str                        # 触发点
-    task_id: str                        # 任务 ID
-    success: bool                       # 是否成功
-    exit_code: int                      # 退出码
-    stdout: str                         # 标准输出
-    stderr: str                         # 标准错误
-    execution_time: float               # 执行时间（秒）
-    timestamp: datetime                 # 执行时间
-    error_message: Optional[str] = None # 错误信息
-```
-
-### 8.3 Task 模型扩展
-
-在现有 Task 模型中添加 hooks 字段：
-
-```python
-@dataclass
-class Task:
-    # ... 现有字段 ...
-
-    # 新增 Hook 配置字段
-    hooks: Dict[str, List[HookConfig]] = field(default_factory=dict)
-    #  结构: {"on_change_detected": [...], "on_after_notify": [...]}
-```
+- 系统中的敏感环境变量（如 `AI_API_KEY`、`DISCORD_WEBHOOK_URL`）不会传递给 Hook 脚本
+- 脚本的 stdout/stderr 输出在记录日志时会自动过滤敏感信息
+- 如果脚本需要访问敏感信息，应通过脚本自身的配置文件获取
 
 ---
 
-## 9. CLI 命令扩展
+## 8. 数据模型扩展
 
-### 9.1 Hook 管理命令
+### 8.1 新增 HookConfig 模型
 
-```bash
-# 列出所有 Hook
-python webmon.py hook list
+用于表示单个 Hook 的配置，包含名称、类型、脚本路径、超时时间、执行模式等字段。
 
-# 列出特定任务的 Hook
-python webmon.py hook list --task <task_id>
+### 8.2 新增 HookResult 模型
 
-# 测试 Hook（模拟触发）
-python webmon.py hook test <hook_name> --task <task_id> --trigger on_change_detected
+用于记录 Hook 执行结果，包含成功/失败状态、退出码、输出内容、执行时间、错误信息等。
 
-# 验证 Hook 配置
-python webmon.py hook validate
+### 8.3 Hook 执行记录存储
 
-# 查看 Hook 执行历史
-python webmon.py hook history --limit 20
+Hook 执行记录存储在 SQLite 数据库中（复用现有的历史记录数据库），保留期限为 **30 天**，超期记录自动清理。
 
-# 启用/禁用 Hook
-python webmon.py hook enable <hook_name>
-python webmon.py hook disable <hook_name>
-```
+### 8.4 Task 模型扩展
 
-### 9.2 命令输出示例
+在现有 Task 模型中添加 `hooks` 字段，类型为字典，键为触发点名称，值为 HookConfig 列表。
 
-```
-$ python webmon.py hook list
+### 8.5 配置文件扩展
 
-全局 Hook:
-┌─────────────────────┬────────┬─────────────────────────────────┬─────────┬─────────┐
-│ 名称                │ 类型   │ 脚本                            │ 触发点  │ 状态    │
-├─────────────────────┼────────┼─────────────────────────────────┼─────────┼─────────┤
-│ log_all_changes     │ shell  │ /home/user/scripts/log.sh       │ 变化后  │ ✓ 启用  │
-│ backup_to_db        │ python │ /home/user/scripts/backup.py    │ 通知后  │ ✓ 启用  │
-└─────────────────────┴────────┴─────────────────────────────────┴─────────┴─────────┘
-
-任务级 Hook (任务: 币安Alpha活动):
-┌─────────────────────┬────────┬─────────────────────────────────┬─────────┬─────────┐
-│ 名称                │ 类型   │ 脚本                            │ 触发点  │ 状态    │
-├─────────────────────┼────────┼─────────────────────────────────┼─────────┼─────────┤
-│ binance_analyzer    │ python │ /home/user/scripts/analyze.py   │ 变化后  │ ✓ 启用  │
-└─────────────────────┴────────┴─────────────────────────────────┴─────────┴─────────┘
-```
+在 `config.json` 根节点添加 `hooks` 配置块，包含全局开关、全局 Hook 列表和默认配置。
 
 ---
 
-## 10. WebUI 扩展
+## 9. 模块设计
 
-### 10.1 Settings 页面扩展
+### 9.1 新增文件
+
+在 `webmon/` 目录下新建 `hooks/` 子包，包含以下模块：
+
+| 模块 | 职责 |
+|------|------|
+| `config.py` | HookConfig 数据模型定义 |
+| `result.py` | HookResult 数据模型定义 |
+| `manager.py` | HookManager 类，负责配置加载、触发点协调 |
+| `executor.py` | HookExecutor 类，负责实际脚本执行 |
+| `validator.py` | 脚本路径验证器 |
+| `triggers.py` | 触发点常量定义 |
+
+### 9.2 HookManager 核心职责
+
+1. 从 ConfigManager 加载全局 Hook 配置
+2. 从 Task 对象获取任务级 Hook 配置
+3. 合并全局和任务级配置
+4. 根据触发点和条件筛选需要执行的 Hook
+5. 调用 HookExecutor 执行脚本
+6. 收集和返回执行结果
+
+### 9.3 HookExecutor 核心职责
+
+1. 验证脚本路径和权限
+2. 构建执行环境（环境变量、工作目录）
+3. 准备 stdin 输入数据
+4. 启动子进程执行脚本
+5. 处理超时和错误
+6. 收集 stdout/stderr 输出
+7. 构建并返回 HookResult
+
+---
+
+## 10. CLI 命令扩展
+
+新增 `hook` 子命令，提供以下功能：
+
+| 命令 | 说明 |
+|------|------|
+| `webmon hook list` | 列出所有已配置的 Hook |
+| `webmon hook list --task <id>` | 列出指定任务的 Hook |
+| `webmon hook test <name>` | 测试指定 Hook（模拟触发） |
+| `webmon hook validate` | 验证所有 Hook 配置（检查脚本是否存在、权限等） |
+| `webmon hook history` | 查看 Hook 执行历史记录 |
+| `webmon hook enable <name>` | 启用指定 Hook |
+| `webmon hook disable <name>` | 禁用指定 Hook |
+
+---
+
+## 11. WebUI 扩展
+
+### 11.1 Settings 页面
 
 在 Settings 页面添加 "Hook 配置" 标签页：
 
-- 全局 Hook 列表管理
-- 添加/编辑/删除 Hook
-- 测试 Hook 按钮
-- 执行日志查看
+- 显示全局 Hook 列表
+- 支持添加、编辑、删除全局 Hook
+- 提供 Hook 测试按钮
+- 显示最近的执行日志
 
-### 10.2 Tasks 页面扩展
+### 11.2 Tasks 页面
 
 在任务编辑弹窗中添加 "Hook" 标签页：
 
-- 任务级 Hook 列表
-- 快速添加 Hook
-- 继承全局 Hook 的开关
+- 显示任务级 Hook 列表
+- 支持添加、编辑、删除任务 Hook
+- 显示继承的全局 Hook（只读）
 
-### 10.3 History 页面扩展
+### 11.3 History 页面
 
-在历史记录详情中显示 Hook 执行信息：
+在历史记录详情中增加 Hook 执行信息：
 
-- 触发的 Hook 列表
-- 执行状态和耗时
-- 输出日志预览
-
----
-
-## 11. 模块设计
-
-### 11.1 文件结构
-
-```
-webmon/
-├── hooks/                          # Hook 模块
-│   ├── __init__.py
-│   ├── config.py                   # HookConfig 数据模型
-│   ├── result.py                   # HookResult 数据模型
-│   ├── manager.py                  # HookManager 管理类
-│   ├── executor.py                 # HookExecutor 执行器
-│   ├── validator.py                # 脚本验证器
-│   └── triggers.py                 # 触发点定义
-├── cli/
-│   └── commands/
-│       └── hook_command.py         # CLI hook 命令
-└── web/
-    └── routers/
-        └── hooks.py                # WebUI Hook API
-```
-
-### 11.2 类设计
-
-```python
-class HookManager:
-    """Hook 管理器"""
-
-    def __init__(self, config_manager: ConfigManager):
-        self.config_manager = config_manager
-        self.executor = HookExecutor()
-        self.validator = ScriptValidator()
-
-    async def trigger(
-        self,
-        trigger_point: str,
-        task: Task,
-        context: Dict[str, Any]
-    ) -> List[HookResult]:
-        """触发指定点的所有 Hook"""
-        pass
-
-    def get_hooks_for_trigger(
-        self,
-        trigger_point: str,
-        task_id: Optional[str] = None
-    ) -> List[HookConfig]:
-        """获取指定触发点的 Hook 列表"""
-        pass
-
-    def validate_all_hooks(self) -> Dict[str, List[str]]:
-        """验证所有 Hook 配置"""
-        pass
-
-
-class HookExecutor:
-    """Hook 执行器"""
-
-    async def execute(
-        self,
-        hook: HookConfig,
-        context: Dict[str, Any]
-    ) -> HookResult:
-        """执行单个 Hook"""
-        pass
-
-    def build_environment(
-        self,
-        hook: HookConfig,
-        context: Dict[str, Any]
-    ) -> Dict[str, str]:
-        """构建执行环境变量"""
-        pass
-
-    def build_stdin_payload(
-        self,
-        context: Dict[str, Any]
-    ) -> str:
-        """构建 stdin JSON 数据"""
-        pass
-```
+- 显示触发的 Hook 列表
+- 显示每个 Hook 的执行状态和耗时
+- 提供输出日志预览
 
 ---
 
 ## 12. 实现优先级
 
-### 12.1 Phase 1: 核心功能 (P0)
+### Phase 1: 核心功能 (必须)
 
-- [x] HookConfig 数据模型
-- [x] HookResult 数据模型
-- [x] HookExecutor 基础实现（Shell/Python 支持）
-- [x] HookManager 基础实现
-- [x] Task 模型扩展（添加 hooks 字段）
-- [x] 环境变量传参实现
-- [x] stdin JSON 传参实现
-- [x] 集成到 TaskScheduler
+- HookConfig 和 HookResult 数据模型
+- HookExecutor 基础实现（Shell 和 Python 脚本支持）
+- HookManager 基础实现
+- 环境变量和 stdin JSON 参数传递
+- Task 模型扩展
+- 集成到 TaskScheduler 变化检测流程
 
-### 12.2 Phase 2: 安全与健壮性 (P1)
+### Phase 2: 安全与健壮性 (重要)
 
-- [ ] 脚本路径验证
-- [ ] 超时控制
-- [ ] 资源限制
-- [ ] 错误处理与重试
-- [ ] 日志记录
+- 脚本路径验证
+- 超时控制实现
+- 资源限制实现
+- 错误处理与重试机制
+- 日志记录
 
-### 12.3 Phase 3: CLI 与配置 (P2)
+### Phase 3: CLI 与配置 (一般)
 
-- [ ] CLI hook 命令实现
-- [ ] config.json 配置格式支持
-- [ ] 配置验证
+- CLI hook 命令实现
+- config.json 配置格式支持
+- 配置验证工具
 
-### 12.4 Phase 4: WebUI (P3)
+### Phase 4: WebUI (可选)
 
-- [ ] Settings 页面 Hook 配置界面
-- [ ] Tasks 编辑页 Hook 配置
-- [ ] History 页 Hook 执行记录
+- Settings 页面 Hook 配置界面
+- Tasks 编辑页 Hook 配置
+- History 页 Hook 执行记录展示
 
 ---
 
 ## 13. 风险与缓解
 
-| 风险 | 概率 | 影响 | 缓解措施 |
-|------|------|------|----------|
-| 恶意脚本注入 | 中 | 高 | 路径白名单、权限限制 |
-| 脚本执行阻塞主流程 | 中 | 中 | 超时控制、异步执行 |
+| 风险 | 可能性 | 影响 | 缓解措施 |
+|------|--------|------|----------|
+| 恶意脚本注入 | 中 | 高 | 路径白名单验证、执行权限限制 |
+| 脚本执行阻塞主流程 | 中 | 中 | 默认异步执行、超时控制 |
 | 资源耗尽 | 低 | 高 | 资源限制、并发控制 |
 | 敏感信息泄露 | 低 | 高 | 环境变量过滤、日志脱敏 |
+| 脚本兼容性问题 | 中 | 低 | 提供详细文档和示例 |
 
 ---
 
 ## 14. 测试计划
 
-### 14.1 单元测试
+### 单元测试
 
-- HookConfig 序列化/反序列化
-- HookExecutor Shell 脚本执行
-- HookExecutor Python 脚本执行
-- 环境变量构建
-- stdin JSON 构建
-- 超时处理
+- HookConfig 序列化/反序列化测试
+- HookExecutor Shell 脚本执行测试
+- HookExecutor Python 脚本执行测试
+- 环境变量构建测试
+- stdin JSON 构建测试
+- 超时处理测试
+- 条件表达式解析测试
 
-### 14.2 集成测试
+### 集成测试
 
-- 端到端触发流程
-- 全局 + 任务级 Hook 组合
-- 错误处理与恢复
+- 完整触发流程测试（从变化检测到 Hook 执行）
+- 全局 + 任务级 Hook 组合执行测试
+- 多 Hook 顺序执行测试
+- 错误处理与恢复测试
 
-### 14.3 安全测试
+### 安全测试
 
-- 路径遍历攻击
-- 命令注入攻击
-- 资源耗尽测试
-
----
-
-## 15. 附录
-
-### 15.1 完整配置示例
-
-```json
-{
-  "hooks": {
-    "enabled": true,
-    "global_hooks": {
-      "on_change_detected": [
-        {
-          "name": "global_logger",
-          "type": "shell",
-          "script": "/home/user/scripts/log_all.sh",
-          "enabled": true,
-          "timeout": 10,
-          "async": true
-        }
-      ]
-    },
-    "defaults": {
-      "timeout": 30,
-      "async": true,
-      "max_retries": 0
-    }
-  },
-  "tasks": [
-    {
-      "id": "1b77c6d2",
-      "name": "币安Alpha活动",
-      "url": "https://example.com",
-      "hooks": {
-        "on_change_detected": [
-          {
-            "name": "binance_analyzer",
-            "type": "python",
-            "script": "/home/user/scripts/analyze.py",
-            "enabled": true,
-            "timeout": 60,
-            "async": false
-          }
-        ],
-        "on_after_notify": [
-          {
-            "name": "trigger_action",
-            "type": "shell",
-            "script": "/home/user/scripts/action.sh",
-            "enabled": true,
-            "timeout": 120,
-            "async": true,
-            "condition": "change_type == 'content_change'"
-          }
-        ]
-      }
-    }
-  ]
-}
-```
-
-### 15.2 相关文档
-
-- [设计文档](design.md)
-- [API 文档](api.md)
-- [WebUI 设计文档](webui_design.md)
+- 路径遍历攻击防护测试
+- 命令注入防护测试
+- 资源限制有效性测试
 
 ---
 
-**审批状态**: ⏳ 待 Human 审批
+## 15. 设计决策记录
+
+以下问题已在评审中确认：
+
+| 问题 | 决策 |
+|------|------|
+| Hook 是否能修改通知内容？ | 否，所有 Hook 为旁路执行，不影响主流程 |
+| 是否支持 Hook 之间数据传递？ | 否，每个 Hook 独立执行 |
+| 资源限制是否可配置？ | 否，使用固定限制值 |
+| 是否支持远程脚本？ | 否，仅支持本地脚本 |
+| 执行记录保留多长时间？ | 30 天，存储在 SQLite 中 |
+
+---
+
+**审批状态**: ✅ 已审批通过
 
 **修订历史**:
 | 版本 | 日期 | 作者 | 说明 |
 |------|------|------|------|
 | 1.0 | 2025-12-29 | Claude | 初稿 |
+| 1.1 | 2025-12-29 | Claude | 减少代码示例，增加文字描述 |
+| 1.2 | 2025-12-29 | Claude | 根据 Human 审批确认设计决策 |
