@@ -2,7 +2,7 @@
 
 > **最后更新**: 2025-12-30 | **更新人**: Claude
 > **项目阶段**: 阶段十二 - WebUI 开发 (Phase 5: 体验优化)
-> **进度**: 74% (74/100 任务完成)
+> **进度**: 75% (75/100 任务完成)
 
 ---
 
@@ -24,7 +24,7 @@
 | Agent | 当前任务 | 状态 | 开始时间 | 预计完成 |
 |-------|---------|------|---------|---------|
 | **Human** | 决策和审查 | - | - | - |
-| **Claude** | 无 | ✅ 完成 #097 | 2025-12-29 | - |
+| **Claude** | 无 | 💤 空闲 | - | - |
 | **KIMI** | 无 | 💤 空闲 | - | - |
 | **Kiro** | 无 | 💤 空闲 | - | - |
 | **Kilo** | 无 | 💤 空闲 | - | - |
@@ -60,13 +60,9 @@
 
 **Phase 1: 核心功能 (必须)**
 
-- [ ] **#098** 实现 Hook 数据模型 `@无人认领` `预计:1h` `依赖:#097`
-  - 描述：创建 HookConfig 和 HookResult 数据模型
-  - 实现内容：
-    - 在 `webmon/hooks/` 下创建 `config.py` 和 `result.py`
-    - HookConfig：name、type、script、enabled、timeout、async、args、env、condition 等字段
-    - HookResult：hook_name、trigger、task_id、success、exit_code、stdout、stderr、execution_time 等字段
-  - 验收：模型定义完整，支持序列化/反序列化
+- [x] **#098** 实现 Hook 数据模型 `@Claude` `完成:2025-12-30` ⏱️ 0.5h
+  - 实现内容：HookTrigger、HookConfig、HookResult 数据模型
+  - 验收：模型定义完整，支持序列化/反序列化 ✅
 
 - [ ] **#099** 实现 HookExecutor 脚本执行器 `@无人认领` `预计:2h` `依赖:#098`
   - 描述：实现 Shell 和 Python 脚本的执行器
@@ -435,9 +431,9 @@ git push origin main
 ## 📈 统计信息
 
 **任务总数**: 100 (+11 Hook 功能任务)
-**已完成**: 74 (74%)
+**已完成**: 75 (75%)
 **进行中**: 0 (0%)
-**待办**: 26 (26%)
+**待办**: 25 (25%)
 **阻塞**: 0 (0%)
 
 **阶段完成度**:
