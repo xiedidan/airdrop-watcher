@@ -8,10 +8,12 @@ from .triggers import HookTrigger
 from .config import HookConfig
 from .result import HookResult
 from .executor import HookExecutor
+from .manager import HookManager
 
 __all__ = [
     'HookTrigger',
     'HookConfig',
     'HookResult',
     'HookExecutor',
+    'HookManager',
 ]
