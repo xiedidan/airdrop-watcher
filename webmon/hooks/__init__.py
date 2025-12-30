@@ -9,6 +9,7 @@ from .config import HookConfig
 from .result import HookResult
 from .executor import HookExecutor
 from .manager import HookManager
+from .validator import ScriptValidator, ValidationResult
 
 __all__ = [
     'HookTrigger',
@@ -16,4 +17,6 @@ __all__ = [
     'HookResult',
     'HookExecutor',
     'HookManager',
+    'ScriptValidator',
+    'ValidationResult',
 ]

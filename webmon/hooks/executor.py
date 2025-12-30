@@ -17,6 +17,7 @@ from webmon.utils.logger import get_logger
 from .config import HookConfig
 from .result import HookResult
 from .triggers import HookTrigger
+from .validator import ScriptValidator
 
 
 # 敏感环境变量名称列表（不传递给脚本）
@@ -65,6 +66,9 @@ class HookExecutor:
         self.project_root = project_root or Path.cwd()
         self.data_dir = self.project_root / "data"
 
+        # 脚本路径验证器
+        self.validator = ScriptValidator(project_root=self.project_root)
+
     async def execute(
         self,
         hook_config: HookConfig,
@@ -90,17 +94,18 @@ class HookExecutor:
         )
 
         try:
-            # 解析脚本路径
-            script_path = self._resolve_script_path(hook_config.script)
-
-            # 验证脚本存在性和可执行权限
-            if not script_path.exists():
-                result.mark_failure(f"脚本不存在: {script_path}")
+            # 验证脚本路径安全性
+            validation_result = self.validator.validate(hook_config.script)
+            if not validation_result.valid:
+                result.mark_failure(f"脚本路径验证失败: {validation_result.error_message}")
+                self.logger.warning(
+                    f"Hook {hook_config.name} 脚本路径验证失败: "
+                    f"{validation_result.error_message}"
+                )
                 return result
 
-            if not os.access(script_path, os.X_OK):
-                result.mark_failure(f"脚本没有执行权限: {script_path}")
-                return result
+            # 使用验证后的路径
+            script_path = validation_result.resolved_path
 
             # 构建执行环境
             env = self._build_environment(hook_config, trigger, context)
