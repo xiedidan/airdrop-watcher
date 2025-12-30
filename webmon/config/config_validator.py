@@ -588,6 +588,132 @@ class ConfigValidator:
         except Exception as e:
             self.logger.error(f"AI配置验证失败: {e}")
             return False
+
+    def validate_hooks_config(self, hooks_config: Dict[str, Any]) -> bool:
+        """
+        验证 Hook 配置
+
+        Args:
+            hooks_config: Hook 配置
+
+        Returns:
+            是否有效
+        """
+        try:
+            if not isinstance(hooks_config, dict):
+                self.logger.error("Hook 配置必须是字典类型")
+                return False
+
+            # 验证启用开关
+            if 'enabled' in hooks_config:
+                if not self._validate_boolean(hooks_config['enabled']):
+                    self.logger.error("Hook enabled 必须是布尔值")
+                    return False
+
+            # 验证默认配置
+            if 'defaults' in hooks_config:
+                defaults = hooks_config['defaults']
+                if not isinstance(defaults, dict):
+                    self.logger.error("Hook defaults 必须是字典类型")
+                    return False
+
+                # 验证 timeout
+                if 'timeout' in defaults:
+                    timeout = defaults['timeout']
+                    if not isinstance(timeout, int) or timeout < 1 or timeout > 300:
+                        self.logger.error(f"Hook timeout 必须是 1-300 之间的整数: {timeout}")
+                        return False
+
+                # 验证 async
+                if 'async' in defaults:
+                    if not self._validate_boolean(defaults['async']):
+                        self.logger.error("Hook async 必须是布尔值")
+                        return False
+
+                # 验证 max_retries
+                if 'max_retries' in defaults:
+                    max_retries = defaults['max_retries']
+                    if not isinstance(max_retries, int) or max_retries < 0 or max_retries > 5:
+                        self.logger.error(f"Hook max_retries 必须是 0-5 之间的整数: {max_retries}")
+                        return False
+
+            # 验证全局 Hooks
+            if 'global_hooks' in hooks_config:
+                global_hooks = hooks_config['global_hooks']
+                if not isinstance(global_hooks, dict):
+                    self.logger.error("global_hooks 必须是字典类型")
+                    return False
+
+                # 验证每个触发点的 Hook 列表
+                valid_triggers = [
+                    'on_change_detected',
+                    'on_before_notify',
+                    'on_after_notify',
+                    'on_notify_failed'
+                ]
+
+                for trigger, hook_list in global_hooks.items():
+                    if trigger not in valid_triggers:
+                        self.logger.warning(f"未知的触发点: {trigger}")
+                        continue
+
+                    if not isinstance(hook_list, list):
+                        self.logger.error(f"触发点 {trigger} 的 Hook 列表必须是数组")
+                        return False
+
+                    for hook in hook_list:
+                        if not self._validate_single_hook(hook):
+                            return False
+
+            self.logger.debug("Hook 配置验证通过")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Hook 配置验证失败: {e}")
+            return False
+
+    def _validate_single_hook(self, hook: Dict[str, Any]) -> bool:
+        """验证单个 Hook 配置"""
+        if not isinstance(hook, dict):
+            self.logger.error("Hook 配置必须是字典类型")
+            return False
+
+        # 必需字段
+        if 'name' not in hook or not hook['name']:
+            self.logger.error("Hook 必须有 name 字段")
+            return False
+
+        if 'type' not in hook:
+            self.logger.error("Hook 必须有 type 字段")
+            return False
+
+        if hook['type'] not in ('shell', 'python'):
+            self.logger.error(f"Hook type 必须是 shell 或 python: {hook['type']}")
+            return False
+
+        if 'script' not in hook or not hook['script']:
+            self.logger.error("Hook 必须有 script 字段")
+            return False
+
+        # 可选字段验证
+        if 'enabled' in hook:
+            if not self._validate_boolean(hook['enabled']):
+                self.logger.error("Hook enabled 必须是布尔值")
+                return False
+
+        if 'timeout' in hook:
+            timeout = hook['timeout']
+            if not isinstance(timeout, int) or timeout < 1 or timeout > 300:
+                self.logger.error(f"Hook timeout 必须是 1-300 之间的整数: {timeout}")
+                return False
+
+        if 'max_retries' in hook:
+            max_retries = hook['max_retries']
+            if not isinstance(max_retries, int) or max_retries < 0 or max_retries > 5:
+                self.logger.error(f"Hook max_retries 必须是 0-5 之间的整数: {max_retries}")
+                return False
+
+        return True
     
     def _validate_rotation_config(self, rotation: Dict[str, Any]) -> bool:
         """验证轮转配置"""

@@ -25,6 +25,10 @@ class Task:
 
     # AI分析配置
     ai_prompt: str = ""  # 自定义AI用户提示词，为空则使用全局默认
+
+    # Hook 配置（任务级）
+    # 格式: {"on_change_detected": [...], "on_before_notify": [...], ...}
+    hooks: Dict[str, List[Dict[str, Any]]] = field(default_factory=dict)
     
     # 时间戳
     created_at: datetime = field(default_factory=datetime.now)
@@ -63,6 +67,7 @@ class Task:
             'timeout': self.timeout,
             'enabled': self.enabled,
             'ai_prompt': self.ai_prompt,
+            'hooks': self.hooks,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
             'last_check': self.last_check.isoformat() if self.last_check else None,

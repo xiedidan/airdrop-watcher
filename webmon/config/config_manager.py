@@ -593,6 +593,57 @@ class ConfigManager:
         """获取调度器配置"""
         return self.json_config.get("scheduler", {})
 
+    def get_hooks_config(self) -> Dict[str, Any]:
+        """
+        获取 Hook 配置
+
+        Returns:
+            Hook 配置字典，包含：
+            - enabled: 是否启用 Hook 功能
+            - defaults: 默认配置（timeout、async、max_retries）
+            - global_hooks: 全局 Hook 配置
+        """
+        return self.json_config.get("hooks", {
+            "enabled": False,
+            "defaults": {
+                "timeout": 30,
+                "async": True,
+                "max_retries": 0
+            },
+            "global_hooks": {}
+        })
+
+    def update_hooks_config(self, hooks_config: Dict[str, Any]) -> bool:
+        """
+        更新 Hook 配置
+
+        Args:
+            hooks_config: Hook 配置
+
+        Returns:
+            是否成功
+        """
+        try:
+            # 验证 Hook 配置
+            if not self.validator.validate_hooks_config(hooks_config):
+                return False
+
+            # 更新配置
+            self.json_config.set("hooks", hooks_config)
+            self.json_config.save()
+
+            self.logger.info("Hook 配置已更新")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"更新 Hook 配置失败: {e}")
+            return False
+
+    def is_hooks_enabled(self) -> bool:
+        """检查 Hook 功能是否启用"""
+        hooks_config = self.get_hooks_config()
+        return hooks_config.get("enabled", False)
+
     def get_ai_config(self, resolve_env: bool = False) -> Dict[str, Any]:
         """
         获取AI分析配置
