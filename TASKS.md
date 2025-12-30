@@ -24,7 +24,7 @@
 | Agent | 当前任务 | 状态 | 开始时间 | 预计完成 |
 |-------|---------|------|---------|---------|
 | **Human** | 决策和审查 | - | - | - |
-| **Claude** | 无 | 💤 空闲 | - | - |
+| **Claude** | #102 集成 Hook 到 TaskScheduler | 🔄 进行中 | 2025-12-30 | 2025-12-30 |
 | **KIMI** | 无 | 💤 空闲 | - | - |
 | **Kiro** | 无 | 💤 空闲 | - | - |
 | **Kilo** | 无 | 💤 空闲 | - | - |
@@ -76,7 +76,7 @@
   - 实现内容：Task 模型添加 hooks 字段、config.json 添加 hooks 配置块、ConfigManager 添加相关方法
   - 验收：配置格式正确，能正确解析和保存 Hook 配置 ✅
 
-- [ ] **#102** 集成 Hook 到 TaskScheduler `@无人认领` `预计:2h` `依赖:#100,#101`
+- [ ] **#102** 集成 Hook 到 TaskScheduler `@Claude` `预计:2h` `依赖:#100,#101`
   - 描述：在变化检测流程中集成 Hook 触发
   - 实现内容：
     - 在 TaskScheduler._execute_task() 中集成 HookManager
