@@ -17,13 +17,14 @@ from webmon.models.task import Task
 from webmon.models.check_result import CheckResult
 from webmon.models.change_details import ChangeDetails
 from webmon.storage.task_storage import TaskStorage
-from webmon.storage.history_storage import HistoryStorage
+from webmon.storage.sqlite_history_storage import SQLiteHistoryStorage
 from webmon.config import ConfigManager
 from webmon.browser.resource_manager import ResourceManager
 from webmon.browser.browser_engine import BrowserEngine
 from webmon.detection.change_detector import ChangeDetector
 from webmon.notification.service import NotificationService
 from webmon.utils.content_diff import ContentDiff
+from webmon.hooks import HookManager
 from .job_queue import JobQueue
 from .execution_engine import ExecutionEngine
 from .priority_manager import PriorityManager
@@ -40,7 +41,7 @@ class TaskScheduler:
         # 使用与ConfigManager相同的配置文件路径
         config_file_path = str(self.config_manager.json_file)
         self.storage = TaskStorage(config_file_path)
-        self.history_storage = HistoryStorage()
+        self.history_storage = SQLiteHistoryStorage()
         
         # 调度器配置 - 使用 ConfigManager 获取调度器配置
         self.scheduler_config = SchedulerConfig.from_config_manager(self.config_manager)
@@ -105,6 +106,12 @@ class TaskScheduler:
 
         # 通知服务
         self.notification_service = NotificationService(self.config_manager)
+
+        # Hook 管理器
+        self.hook_manager = HookManager(
+            config_manager=self.config_manager,
+            project_root=Path.cwd()
+        )
 
         # 注册信号处理
         self._setup_signal_handlers()
@@ -838,16 +845,84 @@ class TaskScheduler:
                         change_types=[check_result.change_type] if check_result.change_type else [],
                     )
 
+                    # 准备 Hook 上下文数据
+                    task_context = task.to_dict()
+                    change_context = {
+                        'type': check_result.change_type,
+                        'similarity': change_details.similarity,
+                        'summary': change_summary,
+                        'old_content': old_content[:2000] if old_content else "",
+                        'new_content': new_content_for_compare[:2000] if new_content_for_compare else "",
+                        'diff': check_result.content_diff if hasattr(check_result, 'content_diff') else None,
+                        'added_lines': check_result.added_lines if hasattr(check_result, 'added_lines') else 0,
+                        'removed_lines': check_result.removed_lines if hasattr(check_result, 'removed_lines') else 0,
+                    }
+
+                    # 触发 on_change_detected Hook
+                    if self.hook_manager.is_enabled:
+                        try:
+                            await self.hook_manager.trigger_on_change_detected(
+                                task=task_context,
+                                change=change_context,
+                                task_hooks=task.hooks
+                            )
+                        except Exception as hook_error:
+                            self.logger.warning(f"on_change_detected Hook 执行异常: {hook_error}")
+
                     # 发送通知（使用支持AI分析的方法）
+                    notification_success = False
+                    notification_error = None
+                    ai_analysis = None
+
                     try:
-                        await self.notification_service.send_webpage_change_notification(
+                        # 触发 on_before_notify Hook（在发送通知之前）
+                        if self.hook_manager.is_enabled:
+                            try:
+                                await self.hook_manager.trigger_on_before_notify(
+                                    task=task_context,
+                                    change=change_context,
+                                    ai_analysis=ai_analysis,  # 此时 AI 分析尚未完成
+                                    task_hooks=task.hooks
+                                )
+                            except Exception as hook_error:
+                                self.logger.warning(f"on_before_notify Hook 执行异常: {hook_error}")
+
+                        notification_success = await self.notification_service.send_webpage_change_notification(
                             task=task,
                             check_result=check_result,
                             change_details=change_details
                         )
                         self.logger.info(f"任务 {task.name} 检测到变化，已发送通知")
+
+                        # 触发 on_after_notify Hook（通知发送成功后）
+                        if self.hook_manager.is_enabled:
+                            try:
+                                await self.hook_manager.trigger_on_after_notify(
+                                    task=task_context,
+                                    change=change_context,
+                                    ai_analysis=ai_analysis,
+                                    notification_result={'status': 'success', 'success': notification_success},
+                                    task_hooks=task.hooks
+                                )
+                            except Exception as hook_error:
+                                self.logger.warning(f"on_after_notify Hook 执行异常: {hook_error}")
+
                     except Exception as e:
+                        notification_error = str(e)
                         self.logger.error(f"发送变化通知失败: {e}")
+
+                        # 触发 on_notify_failed Hook（通知发送失败后）
+                        if self.hook_manager.is_enabled:
+                            try:
+                                await self.hook_manager.trigger_on_notify_failed(
+                                    task=task_context,
+                                    change=change_context,
+                                    ai_analysis=ai_analysis,
+                                    error_message=notification_error,
+                                    task_hooks=task.hooks
+                                )
+                            except Exception as hook_error:
+                                self.logger.warning(f"on_notify_failed Hook 执行异常: {hook_error}")
 
                 
                 # 更新任务状态

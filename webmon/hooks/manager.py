@@ -61,7 +61,7 @@ class HookManager:
     def _load_global_config(self):
         """加载全局 Hook 配置"""
         try:
-            hooks_config = self.config_manager.get_config().get('hooks', {})
+            hooks_config = self.config_manager.get_hooks_config()
 
             # 全局开关
             self._hooks_enabled = hooks_config.get('enabled', False)
