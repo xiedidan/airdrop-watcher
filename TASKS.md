@@ -1,8 +1,8 @@
 # WebMon 网页监控工具 - 任务看板
 
-> **最后更新**: 2025-12-29 | **更新人**: Claude
+> **最后更新**: 2025-12-30 | **更新人**: Claude
 > **项目阶段**: 阶段十二 - WebUI 开发 (Phase 5: 体验优化)
-> **进度**: 76% (73/96 任务完成)
+> **进度**: 74% (74/100 任务完成)
 
 ---
 
@@ -55,26 +55,111 @@
 #### 自定义事件触发机制
 
 - [x] **#097** 设计页面差异事件自定义触发机制 `@Claude` `完成:2025-12-29` ⏱️ 1h
-  - 描述：设计当页面差异被检测到后，允许调用用户自定义Shell/Python脚本的机制
-  - 设计内容：
-    - 触发时机：检测到变化后、通知发送前/后
-    - 脚本配置：全局配置 vs 任务级配置
-    - 传参设计：任务信息、变化内容、时间戳等传递方式（环境变量/命令行参数/stdin）
-    - 执行策略：同步/异步、超时控制、错误处理
-    - 安全考虑：脚本路径验证、执行权限、沙箱隔离
-  - 输出：设计文档，包含架构图、接口定义、配置格式、安全策略
-  - 验收：设计文档完整，方案安全可行，经Human审批
+  - 输出：[设计文档](docs/hook_design.md)
+  - 验收：设计文档完整，方案安全可行，经Human审批 ✅
 
-- [ ] **#098** 实现页面差异事件自定义触发机制 `@无人认领` `预计:6h` `依赖:#097`
-  - 描述：根据设计方案实现自定义脚本触发功能
+**Phase 1: 核心功能 (必须)**
+
+- [ ] **#098** 实现 Hook 数据模型 `@无人认领` `预计:1h` `依赖:#097`
+  - 描述：创建 HookConfig 和 HookResult 数据模型
   - 实现内容：
-    - 配置模型扩展（Task/Config添加hook字段）
-    - 脚本执行器模块（支持Shell和Python脚本）
-    - 参数传递实现
-    - 超时和错误处理
-    - CLI命令支持（配置和测试hook）
-    - WebUI界面支持（配置hook脚本）
-  - 验收：用户可配置自定义脚本，脚本在变化检测后正确执行，传参正确
+    - 在 `webmon/hooks/` 下创建 `config.py` 和 `result.py`
+    - HookConfig：name、type、script、enabled、timeout、async、args、env、condition 等字段
+    - HookResult：hook_name、trigger、task_id、success、exit_code、stdout、stderr、execution_time 等字段
+  - 验收：模型定义完整，支持序列化/反序列化
+
+- [ ] **#099** 实现 HookExecutor 脚本执行器 `@无人认领` `预计:2h` `依赖:#098`
+  - 描述：实现 Shell 和 Python 脚本的执行器
+  - 实现内容：
+    - 在 `webmon/hooks/executor.py` 中实现 HookExecutor 类
+    - 支持 Shell 和 Python 两种脚本类型
+    - 构建执行环境（环境变量、工作目录）
+    - 准备 stdin JSON 输入数据
+    - 启动子进程执行脚本，收集 stdout/stderr
+  - 验收：能正确执行 Shell 和 Python 脚本，返回执行结果
+
+- [ ] **#100** 实现 HookManager 管理器 `@无人认领` `预计:2h` `依赖:#099`
+  - 描述：实现 Hook 配置管理和触发调度
+  - 实现内容：
+    - 在 `webmon/hooks/manager.py` 中实现 HookManager 类
+    - 从 ConfigManager 加载全局 Hook 配置
+    - 从 Task 对象获取任务级 Hook 配置
+    - 合并全局和任务级配置，按顺序执行
+    - 根据触发点和条件筛选需要执行的 Hook
+  - 验收：能正确加载配置，按触发点调度执行 Hook
+
+- [ ] **#101** 扩展 Task 模型和配置格式 `@无人认领` `预计:1h` `依赖:#098`
+  - 描述：在 Task 模型和 config.json 中添加 hooks 字段
+  - 实现内容：
+    - Task 模型添加 `hooks: Dict[str, List[HookConfig]]` 字段
+    - config.json 根节点添加 `hooks` 配置块（enabled、global_hooks、defaults）
+    - ConfigManager 添加 `get_hooks_config()` 方法
+  - 验收：配置格式正确，能正确解析和保存 Hook 配置
+
+- [ ] **#102** 集成 Hook 到 TaskScheduler `@无人认领` `预计:2h` `依赖:#100,#101`
+  - 描述：在变化检测流程中集成 Hook 触发
+  - 实现内容：
+    - 在 TaskScheduler._execute_task() 中集成 HookManager
+    - 实现四个触发点：on_change_detected、on_before_notify、on_after_notify、on_notify_failed
+    - 传递正确的上下文数据（任务信息、变化详情、AI分析结果等）
+  - 验收：变化检测后能正确触发配置的 Hook
+
+**Phase 2: 安全与健壮性 (重要)**
+
+- [ ] **#103** 实现脚本路径验证 `@无人认领` `预计:1h` `依赖:#099`
+  - 描述：验证脚本路径安全性
+  - 实现内容：
+    - 在 `webmon/hooks/validator.py` 中实现 ScriptValidator
+    - 白名单：用户主目录/scripts、项目根目录/scripts、项目根目录/hooks
+    - 黑名单：系统目录、路径遍历符号
+    - 验证脚本存在性和执行权限
+  - 验收：能正确拒绝危险路径，允许合法路径
+
+- [ ] **#104** 实现超时和资源限制 `@无人认领` `预计:1h` `依赖:#099`
+  - 描述：实现脚本执行的超时控制和资源限制
+  - 实现内容：
+    - 超时处理：SIGTERM -> 5秒 -> SIGKILL
+    - 资源限制：CPU 300秒、内存 512MB、文件描述符 256、子进程 16
+    - 使用 Python resource 模块实现（Linux）
+  - 验收：超时脚本能被正确终止，资源限制生效
+
+- [ ] **#105** 实现错误处理与重试 `@无人认领` `预计:1h` `依赖:#099`
+  - 描述：实现 Hook 执行的错误处理和重试机制
+  - 实现内容：
+    - 错误分类：脚本不存在、权限不足、超时、非零退出码、崩溃
+    - 单个 Hook 失败不影响其他 Hook
+    - 支持 max_retries 配置，指数退避重试
+  - 验收：错误能被正确捕获和处理，重试机制正常工作
+
+- [ ] **#106** 实现 Hook 执行记录存储 `@无人认领` `预计:1h` `依赖:#100`
+  - 描述：将 Hook 执行记录存储到 SQLite
+  - 实现内容：
+    - 在 SQLite 中创建 hook_results 表
+    - 存储 HookResult 数据
+    - 实现 30 天自动清理
+  - 验收：执行记录能正确存储和查询，过期记录自动清理
+
+**Phase 3: CLI 与配置 (一般)**
+
+- [ ] **#107** 实现 CLI hook 命令 `@无人认领` `预计:2h` `依赖:#100`
+  - 描述：添加 hook 子命令用于管理和测试 Hook
+  - 实现内容：
+    - `webmon hook list`：列出所有 Hook
+    - `webmon hook test <name>`：测试指定 Hook
+    - `webmon hook validate`：验证 Hook 配置
+    - `webmon hook history`：查看执行历史
+  - 验收：命令能正确执行，输出清晰
+
+**Phase 4: WebUI (可选)**
+
+- [ ] **#108** 实现 WebUI Hook 配置界面 `@无人认领` `预计:3h` `依赖:#107`
+  - 描述：在 WebUI 中添加 Hook 配置功能
+  - 实现内容：
+    - Settings 页面添加 "Hook 配置" 标签页
+    - 支持添加、编辑、删除全局 Hook
+    - Tasks 编辑弹窗添加 "Hook" 标签页
+    - History 页面显示 Hook 执行信息
+  - 验收：能通过 WebUI 管理 Hook 配置
 
 #### 界面体验优化
 
@@ -349,10 +434,10 @@ git push origin main
 
 ## 📈 统计信息
 
-**任务总数**: 96 (+4 新增)
-**已完成**: 73 (76%)
+**任务总数**: 100 (+11 Hook 功能任务)
+**已完成**: 74 (74%)
 **进行中**: 0 (0%)
-**待办**: 23 (24%)
+**待办**: 26 (26%)
 **阻塞**: 0 (0%)
 
 **阶段完成度**:
@@ -381,6 +466,7 @@ git push origin main
 - [设计文档](docs/design.md)
 - [需求文档](docs/requirements.md)
 - [WebUI设计文档](docs/webui_design.md)
+- [Hook机制设计文档](docs/hook_design.md)
 - [任务详细文档](docs/tasks.md)
 - [API文档](docs/api.md)
 
