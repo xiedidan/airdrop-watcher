@@ -22,6 +22,7 @@ from webmon.web.api.history import router as history_router
 from webmon.web.api.settings import router as settings_router
 from webmon.web.api.notification import router as notification_router
 from webmon.web.api.about import router as about_router
+from webmon.web.services.monitor_service import get_monitor_service
 
 
 # 全局应用实例
@@ -39,9 +40,25 @@ async def lifespan(app: FastAPI):
     set_start_time()
     print("WebMon API 服务启动...")
 
+    # 自动启动监控
+    monitor_service = get_monitor_service()
+    result = await monitor_service.start()
+    if result.get('success'):
+        print("✅ 监控器已自动启动")
+    else:
+        print(f"⚠️  监控器启动失败: {result.get('message', '未知错误')}")
+
     yield
 
-    # 关闭时
+    # 关闭时 - 停止监控
+    monitor_service = get_monitor_service()
+    status = await monitor_service.get_status()
+    if status.get('is_running'):
+        result = await monitor_service.stop()
+        if result.get('success'):
+            print("✅ 监控器已停止")
+        else:
+            print(f"⚠️  监控器停止失败: {result.get('message', '未知错误')}")
     print("WebMon API 服务关闭...")
 
 
