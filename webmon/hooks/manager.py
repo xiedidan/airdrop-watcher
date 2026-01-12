@@ -16,6 +16,7 @@ from .config import HookConfig
 from .result import HookResult
 from .executor import HookExecutor
 from .triggers import HookTrigger
+from .storage import HookResultStorage
 
 
 class HookManager:
@@ -34,7 +35,8 @@ class HookManager:
     def __init__(
         self,
         config_manager: Optional[ConfigManager] = None,
-        project_root: Optional[Path] = None
+        project_root: Optional[Path] = None,
+        storage: Optional[HookResultStorage] = None,
     ):
         """
         初始化 Hook 管理器
@@ -42,6 +44,7 @@ class HookManager:
         Args:
             config_manager: 配置管理器
             project_root: 项目根目录
+            storage: Hook 结果存储（可选，如果不提供则自动创建）
         """
         self.logger = get_logger(__name__)
         self.config_manager = config_manager or ConfigManager()
@@ -49,6 +52,11 @@ class HookManager:
 
         # 创建执行器
         self.executor = HookExecutor(project_root=self.project_root)
+
+        # 创建或使用提供的存储
+        self.storage = storage or HookResultStorage(
+            db_path=str(self.project_root / "data" / "hooks.db")
+        )
 
         # 缓存全局配置
         self._global_hooks: Dict[str, List[HookConfig]] = {}
@@ -295,13 +303,27 @@ class HookManager:
             else:
                 sync_hooks.append(hook)
 
-        # 先执行同步 Hook（按顺序）
+        # 先执行同步 Hook（按顺序，单个失败不影响其他）
         for hook in sync_hooks:
             self.logger.debug(f"执行同步 Hook: {hook.name}")
-            result = await self.executor.execute_with_retry(
-                hook, trigger, context
-            )
-            results.append(result)
+            try:
+                result = await self.executor.execute_with_retry(
+                    hook, trigger, context
+                )
+                results.append(result)
+            except Exception as e:
+                # 单个 Hook 失败不影响其他 Hook
+                self.logger.error(f"同步 Hook {hook.name} 执行异常: {e}")
+                error_result = HookResult(
+                    hook_name=hook.name,
+                    trigger=trigger,
+                    task_id=context.get('task', {}).get('id', 'unknown')
+                )
+                error_result.mark_failure(
+                    f"执行异常: {str(e)}",
+                    error_type="execution_error"
+                )
+                results.append(error_result)
 
         # 再执行异步 Hook（并行）
         if async_hooks:
@@ -320,7 +342,10 @@ class HookManager:
                         trigger=trigger,
                         task_id=context.get('task', {}).get('id', 'unknown')
                     )
-                    error_result.mark_failure(f"执行异常: {result}")
+                    error_result.mark_failure(
+                        f"执行异常: {result}",
+                        error_type="execution_error"
+                    )
                     results.append(error_result)
                 else:
                     results.append(result)
@@ -331,6 +356,13 @@ class HookManager:
             f"触发点 {trigger}: 执行完成 "
             f"({success_count}/{len(results)} 成功)"
         )
+
+        # 保存执行结果到存储
+        for result in results:
+            try:
+                self.storage.add(result)
+            except Exception as e:
+                self.logger.warning(f"保存 Hook 执行结果失败: {e}")
 
         return results
 
@@ -474,3 +506,76 @@ class HookManager:
                 if hook.name == name:
                     return hook
         return None
+
+    # ========== 存储相关方法 ==========
+
+    def get_execution_history(
+        self,
+        hook_name: str = None,
+        trigger: str = None,
+        task_id: str = None,
+        success: bool = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> List[HookResult]:
+        """
+        获取 Hook 执行历史
+
+        Args:
+            hook_name: 按 Hook 名称筛选
+            trigger: 按触发点筛选
+            task_id: 按任务 ID 筛选
+            success: 按成功/失败筛选
+            limit: 返回结果数量限制
+            offset: 偏移量
+
+        Returns:
+            HookResult 列表
+        """
+        return self.storage.list(
+            hook_name=hook_name,
+            trigger=trigger,
+            task_id=task_id,
+            success=success,
+            limit=limit,
+            offset=offset,
+        )
+
+    def get_execution_statistics(
+        self,
+        hook_name: str = None,
+        task_id: str = None,
+        days: int = 7,
+    ) -> Dict[str, Any]:
+        """
+        获取 Hook 执行统计
+
+        Args:
+            hook_name: 按 Hook 名称筛选
+            task_id: 按任务 ID 筛选
+            days: 统计最近多少天
+
+        Returns:
+            统计信息字典
+        """
+        return self.storage.get_statistics(
+            hook_name=hook_name,
+            task_id=task_id,
+            days=days,
+        )
+
+    def cleanup_old_results(self, days: int = None) -> int:
+        """
+        清理过期的执行记录
+
+        Args:
+            days: 清理多少天前的记录（默认 30 天）
+
+        Returns:
+            清理的记录数量
+        """
+        return self.storage.cleanup_old_entries(days=days)
+
+    def get_storage_info(self) -> Dict[str, Any]:
+        """获取存储信息"""
+        return self.storage.get_storage_info()
