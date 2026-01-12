@@ -55,6 +55,8 @@ class ArgumentParser:
         self._add_history_command()
         self._add_config_command()
         self._add_web_command()
+        self._add_migrate_history_command()
+        self._add_hook_command()
     
     def _add_global_options(self):
         """添加全局选项"""
@@ -571,4 +573,127 @@ class ArgumentParser:
             '--reload',
             action='store_true',
             help='开发模式，自动重载代码变更'
+        )
+
+    def _add_migrate_history_command(self):
+        """添加 migrate-history 命令"""
+        parser_migrate = self.subparsers.add_parser(
+            'migrate-history',
+            help='迁移历史记录到 SQLite',
+            description='将历史记录从 JSON 文件迁移到 SQLite 数据库，提升查询性能'
+        )
+
+        parser_migrate.add_argument(
+            '--force',
+            '-f',
+            action='store_true',
+            help='强制覆盖已存在的数据库'
+        )
+
+        parser_migrate.add_argument(
+            '--no-backup',
+            action='store_true',
+            help='不备份 JSON 文件'
+        )
+
+        parser_migrate.add_argument(
+            '--json-path',
+            type=str,
+            default='data/history.json',
+            help='JSON 文件路径 (默认: data/history.json)'
+        )
+
+        parser_migrate.add_argument(
+            '--db-path',
+            type=str,
+            default='data/history.db',
+            help='SQLite 数据库路径 (默认: data/history.db)'
+        )
+
+    def _add_hook_command(self):
+        """添加 hook 命令"""
+        parser_hook = self.subparsers.add_parser(
+            'hook',
+            help='Hook 管理命令',
+            description='管理和测试页面变化事件 Hook'
+        )
+
+        # 添加 hook 子命令
+        hook_subparsers = parser_hook.add_subparsers(
+            dest='hook_subcommand',
+            title='Hook 子命令',
+            help='Hook 操作'
+        )
+
+        # hook list 子命令
+        hook_subparsers.add_parser(
+            'list',
+            help='列出所有 Hook'
+        )
+
+        # hook test 子命令
+        parser_test = hook_subparsers.add_parser(
+            'test',
+            help='测试指定的 Hook'
+        )
+        parser_test.add_argument(
+            'hook_name',
+            type=str,
+            help='要测试的 Hook 名称'
+        )
+        parser_test.add_argument(
+            '--trigger',
+            '-t',
+            type=str,
+            default='on_change_detected',
+            choices=[
+                'on_change_detected',
+                'on_before_notify',
+                'on_after_notify',
+                'on_notify_failed'
+            ],
+            help='触发点 (默认: on_change_detected)'
+        )
+
+        # hook validate 子命令
+        hook_subparsers.add_parser(
+            'validate',
+            help='验证 Hook 配置'
+        )
+
+        # hook history 子命令
+        parser_history = hook_subparsers.add_parser(
+            'history',
+            help='查看执行历史'
+        )
+        parser_history.add_argument(
+            'history_hook_name',
+            nargs='?',
+            type=str,
+            help='按 Hook 名称筛选 (可选)'
+        )
+        parser_history.add_argument(
+            '--limit',
+            '-l',
+            type=int,
+            default=20,
+            help='显示最近 N 条记录 (默认: 20)'
+        )
+        parser_history.add_argument(
+            '--success',
+            '-s',
+            action='store_true',
+            help='只显示成功的记录'
+        )
+        parser_history.add_argument(
+            '--failed',
+            '-f',
+            action='store_true',
+            help='只显示失败的记录'
+        )
+        parser_history.add_argument(
+            '--format',
+            choices=['table', 'json'],
+            default='table',
+            help='输出格式 (默认: table)'
         )
