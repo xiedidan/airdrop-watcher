@@ -19,6 +19,10 @@ import {
   NTooltip,
   NText,
   NDivider,
+  NDescriptions,
+  NDescriptionsItem,
+  NGrid,
+  NGridItem,
   type DataTableColumns,
   type FormInst,
   type FormRules,
@@ -34,6 +38,10 @@ import {
   SearchOutline,
   LinkOutline,
   WifiOutline,
+  TimeOutline,
+  AlertCircleOutline,
+  InformationCircleOutline,
+  CodeSlashOutline,
 } from '@vicons/ionicons5'
 import { useTaskStore } from '@/stores/task'
 import { useSSEStore } from '@/stores/sse'
@@ -144,9 +152,6 @@ const formRules: FormRules = {
   ],
 }
 
-// 默认提示词占位符
-const defaultPromptPlaceholder = '留空使用系统默认提示词。支持占位符: {task_name}, {url}, {description}, {changes}'
-
 // 格式化时间
 const formatDateTime = (dateStr: string | null): string => {
   if (!dateStr) return '-'
@@ -170,6 +175,126 @@ const formatInterval = (seconds: number): string => {
   return `${Math.floor(seconds / 3600)}小时`
 }
 
+// 格式化完整日期时间
+const formatFullDateTime = (dateStr: string | null): string => {
+  if (!dateStr) return '-'
+  try {
+    const date = new Date(dateStr)
+    return date.toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    })
+  } catch {
+    return dateStr
+  }
+}
+
+// 展开行渲染
+const renderExpand = (row: Task) => {
+  return h('div', { class: 'task-expand-content' }, [
+    h(NGrid, { cols: 24, xGap: 24, yGap: 16 }, {
+      default: () => [
+        // 左侧：基本信息
+        h(NGridItem, { span: 12 }, {
+          default: () => h(NDescriptions, {
+            labelPlacement: 'left',
+            column: 1,
+            size: 'small',
+            bordered: false,
+          }, {
+            default: () => [
+              h(NDescriptionsItem, { label: 'URL' }, {
+                default: () => h('a', {
+                  href: row.url,
+                  target: '_blank',
+                  rel: 'noopener noreferrer',
+                  style: { color: 'var(--n-text-color)', wordBreak: 'break-all' },
+                }, row.url),
+              }),
+              h(NDescriptionsItem, { label: '描述' }, {
+                default: () => row.description || '-',
+              }),
+              h(NDescriptionsItem, { label: 'CSS选择器' }, {
+                default: () => row.selectors.length > 0
+                  ? h(NSpace, { size: 'small' }, {
+                      default: () => row.selectors.map(s =>
+                        h(NTag, { size: 'small', type: 'info' }, { default: () => s })
+                      ),
+                    })
+                  : h(NText, { depth: 3 }, { default: () => '全页面监控' }),
+              }),
+              h(NDescriptionsItem, { label: '检测间隔' }, {
+                default: () => formatInterval(row.interval),
+              }),
+              h(NDescriptionsItem, { label: '超时时间' }, {
+                default: () => `${row.timeout / 1000}秒`,
+              }),
+            ],
+          }),
+        }),
+        // 右侧：时间和统计
+        h(NGridItem, { span: 12 }, {
+          default: () => h(NDescriptions, {
+            labelPlacement: 'left',
+            column: 1,
+            size: 'small',
+            bordered: false,
+          }, {
+            default: () => [
+              h(NDescriptionsItem, { label: '创建时间' }, {
+                default: () => formatFullDateTime(row.created_at),
+              }),
+              h(NDescriptionsItem, { label: '更新时间' }, {
+                default: () => formatFullDateTime(row.updated_at),
+              }),
+              h(NDescriptionsItem, { label: '最后检测' }, {
+                default: () => formatFullDateTime(row.last_check),
+              }),
+              h(NDescriptionsItem, { label: '最后变化' }, {
+                default: () => formatFullDateTime(row.last_change),
+              }),
+              row.error_count > 0
+                ? h(NDescriptionsItem, { label: '错误信息' }, {
+                    default: () => h(NText, { type: 'error' }, {
+                      default: () => row.last_error_message || `${row.error_count}次错误`,
+                    }),
+                  })
+                : null,
+            ].filter(Boolean),
+          }),
+        }),
+        // AI 提示词（如果有）
+        row.ai_prompt
+          ? h(NGridItem, { span: 24 }, {
+              default: () => h(NDescriptions, {
+                labelPlacement: 'left',
+                column: 1,
+                size: 'small',
+                bordered: false,
+              }, {
+                default: () => [
+                  h(NDescriptionsItem, { label: 'AI提示词' }, {
+                    default: () => h(NText, {
+                      style: {
+                        whiteSpace: 'pre-wrap',
+                        fontSize: '12px',
+                        color: 'var(--n-text-color-3)',
+                      },
+                    }, { default: () => row.ai_prompt }),
+                  }),
+                ],
+              }),
+            })
+          : null,
+      ].filter(Boolean),
+    }),
+  ])
+}
+
 // 表格列定义
 const columns: DataTableColumns<Task> = [
   {
@@ -182,7 +307,7 @@ const columns: DataTableColumns<Task> = [
         default: () => [
           h('span', { style: { fontWeight: 500 } }, row.name),
           row.error_count > 0 && h(NTooltip, {}, {
-            trigger: () => h(NIcon, { color: '#e88080', size: 16 }, { default: () => h(FlashOutline) }),
+            trigger: () => h(NIcon, { color: '#ef4444', size: 16 }, { default: () => h(FlashOutline) }),
             default: () => row.last_error_message || '任务存在错误',
           }),
         ],
@@ -197,7 +322,7 @@ const columns: DataTableColumns<Task> = [
     render: (row) => {
       return h(NSpace, { align: 'center' }, {
         default: () => [
-          h(NIcon, { size: 14, color: '#63e2b7' }, { default: () => h(LinkOutline) }),
+          h(NIcon, { size: 14, color: '#10b981' }, { default: () => h(LinkOutline) }),
           h('span', { style: { fontSize: '13px' } }, row.url),
         ],
       })
@@ -535,6 +660,7 @@ onMounted(async () => {
           :single-line="false"
           :row-key="(row: Task) => row.id"
           :scroll-x="1100"
+          :render-expand="renderExpand"
           max-height="calc(100vh - 320px)"
         />
 
@@ -619,12 +745,17 @@ onMounted(async () => {
         <n-divider style="margin: 16px 0">AI 配置</n-divider>
 
         <n-form-item label="自定义提示词" path="ai_prompt">
-          <n-input
-            v-model:value="formData.ai_prompt"
-            type="textarea"
-            :placeholder="defaultPromptPlaceholder"
-            :rows="3"
-          />
+          <div style="width: 100%;">
+            <n-input
+              v-model:value="formData.ai_prompt"
+              type="textarea"
+              placeholder="输入自定义提示词..."
+              :rows="6"
+            />
+            <div style="font-size: 12px; color: var(--n-text-color-3); margin-top: 4px;">
+              留空使用系统默认提示词。支持占位符: {task_name}, {url}, {description}, {changes}
+            </div>
+          </div>
         </n-form-item>
       </n-form>
 
@@ -648,5 +779,22 @@ onMounted(async () => {
 .page-title {
   font-size: 18px;
   font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.task-expand-content {
+  padding: 16px 24px;
+  background: var(--n-td-color);
+  border-radius: 4px;
+}
+
+.task-expand-content :deep(.n-descriptions-table-content) {
+  padding: 6px 0;
+}
+
+.task-expand-content :deep(.n-descriptions-table-header) {
+  padding: 6px 0;
+  width: 80px;
+  color: var(--n-text-color-3);
 }
 </style>
