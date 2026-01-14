@@ -459,3 +459,111 @@ export interface AboutInfo {
   dependencies: DependencyInfo[]
   timestamp: string
 }
+
+// ==================== Hook 类型 ====================
+
+/**
+ * Hook 配置
+ */
+export interface HookConfig {
+  name: string
+  type: 'shell' | 'python'
+  script: string
+  enabled: boolean
+  timeout: number
+  async: boolean
+  args: string[]
+  env: Record<string, string>
+  condition?: string
+  working_dir?: string
+  max_retries: number
+}
+
+/**
+ * Hook 创建请求
+ */
+export interface HookConfigCreate {
+  trigger: string
+  hook: HookConfig
+}
+
+/**
+ * Hook 更新请求
+ */
+export interface HookConfigUpdate {
+  name?: string
+  type?: 'shell' | 'python'
+  script?: string
+  enabled?: boolean
+  timeout?: number
+  async?: boolean
+  args?: string[]
+  env?: Record<string, string>
+  condition?: string
+  working_dir?: string
+  max_retries?: number
+}
+
+/**
+ * Hook 执行结果
+ */
+export interface HookResult {
+  id: string
+  hook_name: string
+  trigger: string
+  task_id: string
+  success: boolean
+  exit_code?: number
+  stdout: string
+  stderr: string
+  execution_time: number
+  started_at?: string
+  finished_at?: string
+  error_message?: string
+  error_type: string
+  retry_count: number
+}
+
+/**
+ * Hook 列表响应
+ */
+export interface HookListResponse {
+  success: boolean
+  message: string
+  hooks: Record<string, HookConfig[]>
+  enabled: boolean
+  defaults: Record<string, any>
+}
+
+/**
+ * Hook 执行历史响应
+ */
+export interface HookHistoryResponse {
+  success: boolean
+  message: string
+  items: HookResult[]
+  total: number
+}
+
+/**
+ * Hook 统计响应
+ */
+export interface HookStatisticsResponse {
+  success: boolean
+  message: string
+  total_executions: number
+  success_count: number
+  failure_count: number
+  success_rate: number
+  avg_execution_time: number
+  by_hook: Record<string, any>
+  by_trigger: Record<string, any>
+}
+
+/**
+ * 触发点信息
+ */
+export interface TriggerInfo {
+  name: string
+  description: string
+}

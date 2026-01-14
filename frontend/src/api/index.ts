@@ -23,6 +23,14 @@ import type {
   LoggingConfig,
   SchedulerConfig,
   AboutInfo,
+  HookConfig,
+  HookConfigCreate,
+  HookConfigUpdate,
+  HookListResponse,
+  HookHistoryResponse,
+  HookStatisticsResponse,
+  HookResult,
+  TriggerInfo,
 } from '@/types'
 
 const api = axios.create({
@@ -45,26 +53,26 @@ api.interceptors.response.use(
 export const taskApi = {
   // 获取任务列表
   async list(): Promise<TaskListResponse> {
-    const response = await api.get<ApiResponse<TaskListResponse>>('/tasks')
-    return response.data.data
+    const response = await api.get<TaskListResponse>('/tasks')
+    return response.data
   },
 
   // 获取单个任务
   async get(id: string): Promise<Task> {
-    const response = await api.get<ApiResponse<Task>>(`/tasks/${id}`)
-    return response.data.data
+    const response = await api.get<Task>(`/tasks/${id}`)
+    return response.data
   },
 
   // 创建任务
   async create(data: TaskCreate): Promise<Task> {
-    const response = await api.post<ApiResponse<{ task: Task }>>('/tasks', data)
-    return response.data.data.task
+    const response = await api.post<{ success: boolean; message: string; task: Task }>('/tasks', data)
+    return response.data.task
   },
 
   // 更新任务
   async update(id: string, data: TaskUpdate): Promise<Task> {
-    const response = await api.put<ApiResponse<{ task: Task }>>(`/tasks/${id}`, data)
-    return response.data.data.task
+    const response = await api.put<{ success: boolean; message: string; task: Task }>(`/tasks/${id}`, data)
+    return response.data.task
   },
 
   // 删除任务
@@ -74,20 +82,20 @@ export const taskApi = {
 
   // 启用任务
   async enable(id: string): Promise<Task> {
-    const response = await api.post<ApiResponse<{ task: Task }>>(`/tasks/${id}/enable`)
-    return response.data.data.task
+    const response = await api.patch<{ success: boolean; message: string; task: Task }>(`/tasks/${id}/enable`)
+    return response.data.task
   },
 
   // 禁用任务
   async disable(id: string): Promise<Task> {
-    const response = await api.post<ApiResponse<{ task: Task }>>(`/tasks/${id}/disable`)
-    return response.data.data.task
+    const response = await api.patch<{ success: boolean; message: string; task: Task }>(`/tasks/${id}/disable`)
+    return response.data.task
   },
 
   // 立即检测
   async check(id: string): Promise<{ changed: boolean; error?: string }> {
-    const response = await api.post<ApiResponse<{ changed: boolean; error?: string }>>(`/tasks/${id}/check`)
-    return response.data.data
+    const response = await api.post<{ success: boolean; message: string; task_id: string; changed: boolean; error?: string }>(`/tasks/${id}/check`)
+    return { changed: response.data.changed, error: response.data.error }
   },
 }
 
@@ -97,26 +105,32 @@ export const taskApi = {
 export const monitorApi = {
   // 获取监控状态
   async status(): Promise<MonitorStatus> {
-    const response = await api.get<ApiResponse<MonitorStatus>>('/monitor/status')
-    return response.data.data
+    const response = await api.get<MonitorStatus>('/monitor/status')
+    return response.data
   },
 
   // 获取调度器统计
   async stats(): Promise<SchedulerStats> {
-    const response = await api.get<ApiResponse<SchedulerStats>>('/monitor/stats')
-    return response.data.data
+    const response = await api.get<SchedulerStats>('/monitor/stats')
+    return response.data
   },
 
   // 启动监控
   async start(): Promise<MonitorStatus> {
-    const response = await api.post<ApiResponse<{ status: MonitorStatus }>>('/monitor/start')
-    return response.data.data.status
+    const response = await api.post<{ success: boolean; message: string; status?: MonitorStatus }>('/monitor/start')
+    if (!response.data.status) {
+      throw new Error(response.data.message || '启动监控失败')
+    }
+    return response.data.status
   },
 
   // 停止监控
   async stop(): Promise<MonitorStatus> {
-    const response = await api.post<ApiResponse<{ status: MonitorStatus }>>('/monitor/stop')
-    return response.data.data.status
+    const response = await api.post<{ success: boolean; message: string; status?: MonitorStatus }>('/monitor/stop')
+    if (!response.data.status) {
+      throw new Error(response.data.message || '停止监控失败')
+    }
+    return response.data.status
   },
 }
 
@@ -346,6 +360,105 @@ export const aboutApi = {
   async getVersion(): Promise<string> {
     const response = await api.get<{ version: string }>('/about/version')
     return response.data.version
+  },
+}
+
+/**
+ * Hook API
+ */
+export const hookApi = {
+  // 获取所有 Hook 配置
+  async list(): Promise<HookListResponse> {
+    const response = await api.get<HookListResponse>('/hooks')
+    return response.data
+  },
+
+  // 获取可用触发点
+  async getTriggers(): Promise<TriggerInfo[]> {
+    const response = await api.get<ApiResponse<{ triggers: TriggerInfo[] }>>('/hooks/triggers')
+    return response.data.data.triggers
+  },
+
+  // 创建 Hook
+  async create(data: HookConfigCreate): Promise<HookConfig> {
+    const response = await api.post<ApiResponse<{ hook: HookConfig }>>('/hooks', data)
+    return response.data.data.hook
+  },
+
+  // 更新 Hook
+  async update(hookName: string, data: HookConfigUpdate): Promise<void> {
+    await api.put(`/hooks/${encodeURIComponent(hookName)}`, data)
+  },
+
+  // 删除 Hook
+  async delete(hookName: string): Promise<void> {
+    await api.delete(`/hooks/${encodeURIComponent(hookName)}`)
+  },
+
+  // 切换 Hook 启用状态
+  async toggle(hookName: string): Promise<boolean> {
+    const response = await api.patch<ApiResponse<{ enabled: boolean }>>(`/hooks/${encodeURIComponent(hookName)}/toggle`)
+    return response.data.data.enabled
+  },
+
+  // 切换全局 Hook 开关
+  async toggleGlobal(): Promise<boolean> {
+    const response = await api.patch<ApiResponse<{ enabled: boolean }>>('/hooks/global/toggle')
+    return response.data.data.enabled
+  },
+
+  // 测试 Hook
+  async test(hookName: string, trigger: string = 'on_change_detected', taskId?: string): Promise<{
+    success: boolean
+    message: string
+    result?: HookResult
+  }> {
+    const response = await api.post<{
+      success: boolean
+      message: string
+      result?: HookResult
+    }>(`/hooks/${encodeURIComponent(hookName)}/test`, {
+      trigger,
+      task_id: taskId,
+    })
+    return response.data
+  },
+
+  // 获取执行历史
+  async getHistory(params?: {
+    hook_name?: string
+    trigger?: string
+    task_id?: string
+    success?: boolean
+    limit?: number
+    offset?: number
+  }): Promise<HookHistoryResponse> {
+    const response = await api.get<HookHistoryResponse>('/hooks/history', { params })
+    return response.data
+  },
+
+  // 获取执行统计
+  async getStatistics(params?: {
+    hook_name?: string
+    task_id?: string
+    days?: number
+  }): Promise<HookStatisticsResponse> {
+    const response = await api.get<HookStatisticsResponse>('/hooks/statistics', { params })
+    return response.data
+  },
+
+  // 验证 Hook 配置
+  async validate(config: HookConfig): Promise<{
+    success: boolean
+    message: string
+    data?: { errors: string[] }
+  }> {
+    const response = await api.post<{
+      success: boolean
+      message: string
+      data?: { errors: string[] }
+    }>('/hooks/validate', config)
+    return response.data
   },
 }
 

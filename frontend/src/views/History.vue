@@ -38,11 +38,13 @@ import {
   DocumentTextOutline,
   SparklesOutline,
   DownloadOutline,
+  CodeSlashOutline,
+  FlashOutline,
 } from '@vicons/ionicons5'
-import { historyApi } from '@/api'
+import { historyApi, hookApi } from '@/api'
 import { useTaskStore } from '@/stores/task'
 import { message } from '@/utils/discrete'
-import type { HistoryEntry, ChangeDetails, HistoryStatistics, Task } from '@/types'
+import type { HistoryEntry, ChangeDetails, HistoryStatistics, Task, HookResult, HookStatisticsResponse } from '@/types'
 
 const taskStore = useTaskStore()
 
@@ -87,6 +89,14 @@ const showDetailModal = ref(false)
 const selectedEntry = ref<HistoryEntry | null>(null)
 const changeDetails = ref<ChangeDetails | null>(null)
 const isLoadingDetail = ref(false)
+
+// Hook 执行历史
+const hookHistory = ref<HookResult[]>([])
+const hookStatistics = ref<HookStatisticsResponse | null>(null)
+const isLoadingHooks = ref(false)
+const hookTaskFilter = ref('')
+const showHookDetailModal = ref(false)
+const selectedHookResult = ref<HookResult | null>(null)
 
 // 格式化时间
 const formatDateTime = (dateStr: string | null): string => {
@@ -183,7 +193,7 @@ const columns: DataTableColumns<HistoryEntry> = [
     title: 'URL',
     key: 'url',
     ellipsis: { tooltip: true },
-    render: (row) => h('span', { style: { fontSize: '12px', color: '#909399' } }, row.url),
+    render: (row) => h('span', { style: { fontSize: '12px', color: '#a1a1aa' } }, row.url),
   },
   {
     title: '摘要',
@@ -217,6 +227,85 @@ const columns: DataTableColumns<HistoryEntry> = [
                 quaternary: true,
                 type: 'primary',
                 onClick: () => handleViewDetail(row),
+              },
+              {
+                icon: () => h(NIcon, {}, { default: () => h(EyeOutline) }),
+              }
+            ),
+          default: () => '查看详情',
+        }
+      )
+    },
+  },
+]
+
+// Hook 执行历史表格列定义
+const hookColumns: DataTableColumns<HookResult> = [
+  {
+    title: '时间',
+    key: 'started_at',
+    width: 140,
+    render: (row) => formatShortDateTime(row.started_at || ''),
+  },
+  {
+    title: 'Hook 名称',
+    key: 'hook_name',
+    width: 150,
+    ellipsis: { tooltip: true },
+  },
+  {
+    title: '触发点',
+    key: 'trigger',
+    width: 140,
+    render: (row) => h(NTag, { type: 'info', size: 'small' }, { default: () => row.trigger }),
+  },
+  {
+    title: '任务',
+    key: 'task_id',
+    width: 150,
+    ellipsis: { tooltip: true },
+    render: (row) => getTaskName(row.task_id),
+  },
+  {
+    title: '状态',
+    key: 'success',
+    width: 80,
+    render: (row) => {
+      return h(
+        NTag,
+        { type: row.success ? 'success' : 'error', size: 'small' },
+        { default: () => (row.success ? '成功' : '失败') }
+      )
+    },
+  },
+  {
+    title: '耗时',
+    key: 'execution_time',
+    width: 80,
+    render: (row) => {
+      const time = row.execution_time
+      if (time < 1) return `${(time * 1000).toFixed(0)}ms`
+      return `${time.toFixed(2)}s`
+    },
+  },
+  {
+    title: '操作',
+    key: 'actions',
+    width: 80,
+    fixed: 'right',
+    render: (row) => {
+      return h(
+        NTooltip,
+        {},
+        {
+          trigger: () =>
+            h(
+              NButton,
+              {
+                size: 'small',
+                quaternary: true,
+                type: 'primary',
+                onClick: () => handleViewHookDetail(row),
               },
               {
                 icon: () => h(NIcon, {}, { default: () => h(EyeOutline) }),
@@ -280,6 +369,46 @@ const loadStatistics = async () => {
   } catch (error) {
     console.error('加载统计信息失败:', error)
   }
+}
+
+// 加载 Hook 执行历史
+const loadHookHistory = async () => {
+  isLoadingHooks.value = true
+  try {
+    const response = await hookApi.getHistory({
+      task_id: hookTaskFilter.value || undefined,
+      limit: 50,
+    })
+    hookHistory.value = response.items
+  } catch (error) {
+    console.error('加载 Hook 执行历史失败:', error)
+  } finally {
+    isLoadingHooks.value = false
+  }
+}
+
+// 加载 Hook 统计
+const loadHookStatistics = async () => {
+  try {
+    hookStatistics.value = await hookApi.getStatistics({
+      task_id: hookTaskFilter.value || undefined,
+      days: 7,
+    })
+  } catch (error) {
+    console.error('加载 Hook 统计失败:', error)
+  }
+}
+
+// 查看 Hook 执行详情
+const handleViewHookDetail = (result: HookResult) => {
+  selectedHookResult.value = result
+  showHookDetailModal.value = true
+}
+
+// 刷新 Hook 数据
+const handleRefreshHooks = async () => {
+  await Promise.all([loadHookHistory(), loadHookStatistics()])
+  message.success('刷新成功')
 }
 
 // 刷新数据
@@ -348,7 +477,7 @@ watch(searchKeyword, () => {
 // 初始化
 onMounted(async () => {
   await taskStore.fetchTasks()
-  await Promise.all([loadHistory(), loadStatistics()])
+  await Promise.all([loadHistory(), loadStatistics(), loadHookHistory(), loadHookStatistics()])
 })
 
 // 导出下拉菜单选项
@@ -465,7 +594,7 @@ const handleExport = async (format: string) => {
           <n-card class="stat-card">
             <n-statistic label="总记录数" :value="statistics.total_entries">
               <template #prefix>
-                <n-icon color="#63e2b7"><DocumentTextOutline /></n-icon>
+                <n-icon color="#10b981"><DocumentTextOutline /></n-icon>
               </template>
             </n-statistic>
           </n-card>
@@ -474,7 +603,7 @@ const handleExport = async (format: string) => {
           <n-card class="stat-card">
             <n-statistic label="检测次数" :value="statistics.check_results">
               <template #prefix>
-                <n-icon color="#70c0e8"><TimeOutline /></n-icon>
+                <n-icon color="#06b6d4"><TimeOutline /></n-icon>
               </template>
             </n-statistic>
           </n-card>
@@ -483,7 +612,7 @@ const handleExport = async (format: string) => {
           <n-card class="stat-card">
             <n-statistic label="变化记录" :value="statistics.change_details">
               <template #prefix>
-                <n-icon color="#f2c97d"><SwapHorizontalOutline /></n-icon>
+                <n-icon color="#f59e0b"><SwapHorizontalOutline /></n-icon>
               </template>
             </n-statistic>
           </n-card>
@@ -492,7 +621,7 @@ const handleExport = async (format: string) => {
           <n-card class="stat-card">
             <n-statistic label="变化率" :value="statistics.change_rate.toFixed(1)" suffix="%">
               <template #prefix>
-                <n-icon color="#e88080"><SparklesOutline /></n-icon>
+                <n-icon color="#ef4444"><SparklesOutline /></n-icon>
               </template>
             </n-statistic>
           </n-card>
@@ -591,7 +720,7 @@ const handleExport = async (format: string) => {
           :single-line="false"
           :row-key="(row: HistoryEntry) => row.id"
           :scroll-x="1000"
-          max-height="calc(100vh - 480px)"
+          :max-height="720"
         />
 
         <!-- 分页 -->
@@ -615,6 +744,78 @@ const handleExport = async (format: string) => {
         />
       </n-card>
     </n-spin>
+
+    <!-- Hook 执行历史 -->
+    <n-card title="Hook 执行历史" style="margin-top: 16px">
+      <template #header-extra>
+        <n-space>
+          <n-select
+            v-model:value="hookTaskFilter"
+            :options="taskOptions"
+            placeholder="筛选任务"
+            style="width: 180px"
+            @update:value="loadHookHistory"
+          />
+          <n-button text @click="handleRefreshHooks">
+            <template #icon>
+              <n-icon><RefreshOutline /></n-icon>
+            </template>
+            刷新
+          </n-button>
+        </n-space>
+      </template>
+
+      <n-spin :show="isLoadingHooks">
+        <!-- Hook 统计 -->
+        <n-grid :cols="24" :x-gap="16" style="margin-bottom: 16px" v-if="hookStatistics">
+          <n-grid-item :span="6">
+            <n-statistic label="总执行次数" :value="hookStatistics.total_executions">
+              <template #prefix>
+                <n-icon color="#6366f1"><FlashOutline /></n-icon>
+              </template>
+            </n-statistic>
+          </n-grid-item>
+          <n-grid-item :span="6">
+            <n-statistic label="成功次数" :value="hookStatistics.success_count">
+              <template #prefix>
+                <n-icon color="#10b981"><CheckmarkCircleOutline /></n-icon>
+              </template>
+            </n-statistic>
+          </n-grid-item>
+          <n-grid-item :span="6">
+            <n-statistic label="失败次数" :value="hookStatistics.failure_count">
+              <template #prefix>
+                <n-icon color="#ef4444"><CloseCircleOutline /></n-icon>
+              </template>
+            </n-statistic>
+          </n-grid-item>
+          <n-grid-item :span="6">
+            <n-statistic label="成功率">
+              <template #prefix>
+                <n-icon color="#f59e0b"><CodeSlashOutline /></n-icon>
+              </template>
+              {{ (hookStatistics.success_rate * 100).toFixed(1) }}%
+            </n-statistic>
+          </n-grid-item>
+        </n-grid>
+
+        <!-- Hook 执行记录列表 -->
+        <n-data-table
+          :columns="hookColumns"
+          :data="hookHistory"
+          :bordered="false"
+          :single-line="false"
+          :row-key="(row: HookResult) => row.id"
+          max-height="400px"
+        />
+
+        <n-empty
+          v-if="hookHistory.length === 0 && !isLoadingHooks"
+          description="暂无 Hook 执行记录"
+          style="margin-top: 20px"
+        />
+      </n-spin>
+    </n-card>
 
     <!-- 详情弹窗 -->
     <n-modal
@@ -653,7 +854,7 @@ const handleExport = async (format: string) => {
             <n-descriptions :column="2" label-placement="left" bordered>
               <n-descriptions-item label="检测状态">
                 <n-space align="center">
-                  <n-icon :color="selectedEntry.data?.success !== false ? '#63e2b7' : '#e88080'">
+                  <n-icon :color="selectedEntry.data?.success !== false ? '#10b981' : '#ef4444'">
                     <CheckmarkCircleOutline v-if="selectedEntry.data?.success !== false" />
                     <CloseCircleOutline v-else />
                   </n-icon>
@@ -720,7 +921,7 @@ const handleExport = async (format: string) => {
             <template v-if="changeDetails.ai_summary">
               <n-divider>
                 <n-space align="center">
-                  <n-icon color="#f2c97d"><SparklesOutline /></n-icon>
+                  <n-icon color="#f59e0b"><SparklesOutline /></n-icon>
                   <span>AI 分析</span>
                 </n-space>
               </n-divider>
@@ -769,6 +970,66 @@ const handleExport = async (format: string) => {
         </template>
       </n-spin>
     </n-modal>
+
+    <!-- Hook 详情弹窗 -->
+    <n-modal
+      v-model:show="showHookDetailModal"
+      preset="card"
+      title="Hook 执行详情"
+      style="width: 700px; max-width: 90vw"
+      :mask-closable="true"
+    >
+      <template v-if="selectedHookResult">
+        <n-descriptions :column="2" label-placement="left" bordered>
+          <n-descriptions-item label="Hook 名称">
+            <n-text code>{{ selectedHookResult.hook_name }}</n-text>
+          </n-descriptions-item>
+          <n-descriptions-item label="触发点">
+            <n-tag type="info" size="small">{{ selectedHookResult.trigger }}</n-tag>
+          </n-descriptions-item>
+          <n-descriptions-item label="任务 ID">
+            <n-text code>{{ selectedHookResult.task_id }}</n-text>
+          </n-descriptions-item>
+          <n-descriptions-item label="执行状态">
+            <n-tag :type="selectedHookResult.success ? 'success' : 'error'" size="small">
+              {{ selectedHookResult.success ? '成功' : '失败' }}
+            </n-tag>
+          </n-descriptions-item>
+          <n-descriptions-item label="退出码">
+            {{ selectedHookResult.exit_code ?? '-' }}
+          </n-descriptions-item>
+          <n-descriptions-item label="执行耗时">
+            {{ selectedHookResult.execution_time.toFixed(3) }}s
+          </n-descriptions-item>
+          <n-descriptions-item label="开始时间">
+            {{ formatDateTime(selectedHookResult.started_at || null) }}
+          </n-descriptions-item>
+          <n-descriptions-item label="结束时间">
+            {{ formatDateTime(selectedHookResult.finished_at || null) }}
+          </n-descriptions-item>
+          <n-descriptions-item v-if="selectedHookResult.retry_count > 0" label="重试次数" :span="2">
+            {{ selectedHookResult.retry_count }}
+          </n-descriptions-item>
+          <n-descriptions-item v-if="selectedHookResult.error_message" label="错误信息" :span="2">
+            <n-text type="error">{{ selectedHookResult.error_message }}</n-text>
+          </n-descriptions-item>
+        </n-descriptions>
+
+        <template v-if="selectedHookResult.stdout">
+          <n-divider>标准输出</n-divider>
+          <n-scrollbar style="max-height: 200px">
+            <n-code :code="selectedHookResult.stdout" language="text" />
+          </n-scrollbar>
+        </template>
+
+        <template v-if="selectedHookResult.stderr">
+          <n-divider>标准错误</n-divider>
+          <n-scrollbar style="max-height: 200px">
+            <n-code :code="selectedHookResult.stderr" language="text" />
+          </n-scrollbar>
+        </template>
+      </template>
+    </n-modal>
   </div>
 </template>
 
@@ -780,6 +1041,7 @@ const handleExport = async (format: string) => {
 .page-title {
   font-size: 18px;
   font-weight: 600;
+  color: var(--color-text-primary);
 }
 
 .stat-card {

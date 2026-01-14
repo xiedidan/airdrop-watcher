@@ -29,6 +29,11 @@ import {
   NList,
   NListItem,
   NThing,
+  NModal,
+  NPopconfirm,
+  NEmpty,
+  NCode,
+  NScrollbar,
 } from 'naive-ui'
 import {
   SettingsOutline,
@@ -44,8 +49,15 @@ import {
   BookOutline,
   BugOutline,
   HeartOutline,
+  CodeSlashOutline,
+  AddOutline,
+  CreateOutline,
+  TrashOutline,
+  PlayOutline,
+  PauseOutline,
+  FlashOutline,
 } from '@vicons/ionicons5'
-import { settingsApi, notificationApi, aboutApi } from '@/api'
+import { settingsApi, notificationApi, aboutApi, hookApi } from '@/api'
 import { message, dialog } from '@/utils/discrete'
 import type {
   AllSettings,
@@ -58,6 +70,9 @@ import type {
   SchedulerConfig,
   PlatformInfo,
   AboutInfo,
+  HookConfig,
+  HookResult,
+  TriggerInfo,
 } from '@/types'
 import type { PlatformTestResult } from '@/api'
 
@@ -112,6 +127,254 @@ const logLevelOptions = [
   { label: 'ERROR', value: 'ERROR' },
   { label: 'CRITICAL', value: 'CRITICAL' },
 ]
+
+// ==================== Hook 相关 ====================
+
+// Hook 数据
+const hooksEnabled = ref(false)
+const hooks = ref<Record<string, HookConfig[]>>({})
+const hookDefaults = ref<Record<string, any>>({})
+const triggers = ref<TriggerInfo[]>([])
+const loadingHooks = ref(false)
+const testingHook = ref<string | null>(null)
+
+// Hook 弹窗状态
+const showHookModal = ref(false)
+const hookModalMode = ref<'add' | 'edit'>('add')
+const editingHook = ref<HookConfig | null>(null)
+const editingHookTrigger = ref<string>('')
+
+// Hook 测试结果弹窗
+const showTestResultModal = ref(false)
+const testResult = ref<HookResult | null>(null)
+
+// Hook 表单
+const hookForm = reactive<{
+  name: string
+  type: 'shell' | 'python'
+  script: string
+  trigger: string
+  enabled: boolean
+  timeout: number
+  async: boolean
+  args: string
+  env: string
+  condition: string
+  working_dir: string
+  max_retries: number
+}>({
+  name: '',
+  type: 'shell',
+  script: '',
+  trigger: 'on_change_detected',
+  enabled: true,
+  timeout: 30,
+  async: true,
+  args: '',
+  env: '',
+  condition: '',
+  working_dir: '',
+  max_retries: 0,
+})
+
+// 脚本类型选项
+const scriptTypeOptions = [
+  { label: 'Shell', value: 'shell' },
+  { label: 'Python', value: 'python' },
+]
+
+// 加载 Hook 配置
+async function loadHooks() {
+  loadingHooks.value = true
+  try {
+    const response = await hookApi.list()
+    hooks.value = response.hooks
+    hooksEnabled.value = response.enabled
+    hookDefaults.value = response.defaults
+    triggers.value = await hookApi.getTriggers()
+  } catch (error) {
+    console.error('加载 Hook 配置失败:', error)
+    message.error('加载 Hook 配置失败')
+  } finally {
+    loadingHooks.value = false
+  }
+}
+
+// 触发点选项
+const triggerOptions = computed(() =>
+  triggers.value.map(t => ({
+    label: `${t.name} - ${t.description}`,
+    value: t.name,
+  }))
+)
+
+// 所有 Hook 列表
+const allHooks = computed(() => {
+  const result: Array<{ trigger: string; hook: HookConfig }> = []
+  for (const [trigger, hookList] of Object.entries(hooks.value)) {
+    for (const hook of hookList) {
+      result.push({ trigger, hook })
+    }
+  }
+  return result
+})
+
+// 切换全局 Hook 开关
+async function toggleGlobalHooks() {
+  try {
+    const newState = await hookApi.toggleGlobal()
+    hooksEnabled.value = newState
+    message.success(newState ? 'Hook 功能已启用' : 'Hook 功能已禁用')
+  } catch (error) {
+    console.error('切换 Hook 状态失败:', error)
+    message.error('操作失败')
+  }
+}
+
+// 打开添加 Hook 弹窗
+function openAddHookModal() {
+  hookModalMode.value = 'add'
+  editingHook.value = null
+  editingHookTrigger.value = ''
+  Object.assign(hookForm, {
+    name: '',
+    type: 'shell',
+    script: '',
+    trigger: 'on_change_detected',
+    enabled: true,
+    timeout: hookDefaults.value.timeout || 30,
+    async: hookDefaults.value.async !== false,
+    args: '',
+    env: '',
+    condition: '',
+    working_dir: '',
+    max_retries: hookDefaults.value.max_retries || 0,
+  })
+  showHookModal.value = true
+}
+
+// 打开编辑 Hook 弹窗
+function openEditHookModal(trigger: string, hook: HookConfig) {
+  hookModalMode.value = 'edit'
+  editingHook.value = hook
+  editingHookTrigger.value = trigger
+  Object.assign(hookForm, {
+    name: hook.name,
+    type: hook.type,
+    script: hook.script,
+    trigger: trigger,
+    enabled: hook.enabled,
+    timeout: hook.timeout,
+    async: hook.async,
+    args: hook.args.join(', '),
+    env: Object.entries(hook.env).map(([k, v]) => `${k}=${v}`).join('\n'),
+    condition: hook.condition || '',
+    working_dir: hook.working_dir || '',
+    max_retries: hook.max_retries,
+  })
+  showHookModal.value = true
+}
+
+// 保存 Hook
+async function saveHook() {
+  saving.value = true
+  try {
+    const hookConfig: HookConfig = {
+      name: hookForm.name,
+      type: hookForm.type,
+      script: hookForm.script,
+      enabled: hookForm.enabled,
+      timeout: hookForm.timeout,
+      async: hookForm.async,
+      args: hookForm.args ? hookForm.args.split(',').map(s => s.trim()).filter(Boolean) : [],
+      env: hookForm.env
+        ? Object.fromEntries(
+            hookForm.env.split('\n')
+              .map(line => line.trim())
+              .filter(Boolean)
+              .map(line => {
+                const idx = line.indexOf('=')
+                return idx > 0 ? [line.slice(0, idx), line.slice(idx + 1)] : [line, '']
+              })
+          )
+        : {},
+      condition: hookForm.condition || undefined,
+      working_dir: hookForm.working_dir || undefined,
+      max_retries: hookForm.max_retries,
+    }
+
+    if (hookModalMode.value === 'add') {
+      await hookApi.create({
+        trigger: hookForm.trigger,
+        hook: hookConfig,
+      })
+      message.success('Hook 已添加')
+    } else {
+      await hookApi.update(editingHook.value!.name, hookConfig)
+      message.success('Hook 已更新')
+    }
+
+    showHookModal.value = false
+    await loadHooks()
+  } catch (error: any) {
+    console.error('保存 Hook 失败:', error)
+    message.error(error.response?.data?.detail || '保存失败')
+  } finally {
+    saving.value = false
+  }
+}
+
+// 删除 Hook
+async function deleteHook(hookName: string) {
+  try {
+    await hookApi.delete(hookName)
+    message.success('Hook 已删除')
+    await loadHooks()
+  } catch (error) {
+    console.error('删除 Hook 失败:', error)
+    message.error('删除失败')
+  }
+}
+
+// 切换 Hook 启用状态
+async function toggleHook(hookName: string) {
+  try {
+    const newState = await hookApi.toggle(hookName)
+    message.success(newState ? 'Hook 已启用' : 'Hook 已禁用')
+    await loadHooks()
+  } catch (error) {
+    console.error('切换 Hook 状态失败:', error)
+    message.error('操作失败')
+  }
+}
+
+// 测试 Hook
+async function testHook(hookName: string) {
+  testingHook.value = hookName
+  try {
+    const response = await hookApi.test(hookName)
+    if (response.result) {
+      testResult.value = response.result
+      showTestResultModal.value = true
+    }
+    if (response.success) {
+      message.success('测试成功')
+    } else {
+      message.warning(response.message)
+    }
+  } catch (error: any) {
+    console.error('测试 Hook 失败:', error)
+    message.error(error.response?.data?.detail || '测试失败')
+  } finally {
+    testingHook.value = null
+  }
+}
+
+// 获取触发点描述
+function getTriggerDescription(trigger: string): string {
+  const t = triggers.value.find(t => t.name === trigger)
+  return t?.description || trigger
+}
 
 // 加载所有配置
 async function loadSettings() {
@@ -338,6 +601,7 @@ function formatInterval(seconds: number): string {
 
 onMounted(() => {
   loadSettings()
+  loadHooks()
 })
 </script>
 
@@ -952,6 +1216,160 @@ URL：{url}
             </n-form>
           </n-tab-pane>
 
+          <!-- Hook 配置 -->
+          <n-tab-pane name="hooks" tab="Hook 配置">
+            <template #tab>
+              <n-space align="center" :size="4">
+                <n-icon><CodeSlashOutline /></n-icon>
+                <span>Hook 配置</span>
+              </n-space>
+            </template>
+
+            <n-spin :show="loadingHooks">
+              <!-- 全局开关 -->
+              <n-space align="center" justify="space-between" style="margin-bottom: 16px">
+                <n-space align="center">
+                  <n-text>Hook 功能</n-text>
+                  <n-switch :value="hooksEnabled" @update:value="toggleGlobalHooks" />
+                  <n-tag :type="hooksEnabled ? 'success' : 'default'" size="small">
+                    {{ hooksEnabled ? '已启用' : '已禁用' }}
+                  </n-tag>
+                </n-space>
+                <n-space>
+                  <n-button type="primary" @click="openAddHookModal" :disabled="!hooksEnabled">
+                    <template #icon>
+                      <n-icon><AddOutline /></n-icon>
+                    </template>
+                    添加 Hook
+                  </n-button>
+                  <n-button @click="loadHooks">
+                    <template #icon>
+                      <n-icon><RefreshOutline /></n-icon>
+                    </template>
+                    刷新
+                  </n-button>
+                </n-space>
+              </n-space>
+
+              <n-alert v-if="!hooksEnabled" type="info" style="margin-bottom: 16px">
+                Hook 功能当前已禁用。启用后可以在页面变化检测时自动执行自定义脚本。
+              </n-alert>
+
+              <!-- Hook 列表 -->
+              <n-empty v-if="allHooks.length === 0" description="暂无 Hook 配置">
+                <template #extra>
+                  <n-button size="small" @click="openAddHookModal" :disabled="!hooksEnabled">
+                    添加第一个 Hook
+                  </n-button>
+                </template>
+              </n-empty>
+
+              <n-list v-else bordered>
+                <n-list-item v-for="{ trigger, hook } in allHooks" :key="hook.name">
+                  <n-thing>
+                    <template #header>
+                      <n-space align="center">
+                        <span class="hook-name">{{ hook.name }}</span>
+                        <n-tag :type="hook.enabled ? 'success' : 'default'" size="small">
+                          {{ hook.enabled ? '启用' : '禁用' }}
+                        </n-tag>
+                        <n-tag type="info" size="small">{{ hook.type }}</n-tag>
+                        <n-tag v-if="hook.async" type="warning" size="small">异步</n-tag>
+                      </n-space>
+                    </template>
+                    <template #header-extra>
+                      <n-space>
+                        <n-tooltip>
+                          <template #trigger>
+                            <n-button
+                              size="small"
+                              quaternary
+                              type="info"
+                              :loading="testingHook === hook.name"
+                              @click="testHook(hook.name)"
+                            >
+                              <template #icon>
+                                <n-icon><FlashOutline /></n-icon>
+                              </template>
+                            </n-button>
+                          </template>
+                          测试
+                        </n-tooltip>
+                        <n-tooltip>
+                          <template #trigger>
+                            <n-button
+                              size="small"
+                              quaternary
+                              :type="hook.enabled ? 'warning' : 'success'"
+                              @click="toggleHook(hook.name)"
+                            >
+                              <template #icon>
+                                <n-icon>
+                                  <PauseOutline v-if="hook.enabled" />
+                                  <PlayOutline v-else />
+                                </n-icon>
+                              </template>
+                            </n-button>
+                          </template>
+                          {{ hook.enabled ? '禁用' : '启用' }}
+                        </n-tooltip>
+                        <n-tooltip>
+                          <template #trigger>
+                            <n-button
+                              size="small"
+                              quaternary
+                              type="primary"
+                              @click="openEditHookModal(trigger, hook)"
+                            >
+                              <template #icon>
+                                <n-icon><CreateOutline /></n-icon>
+                              </template>
+                            </n-button>
+                          </template>
+                          编辑
+                        </n-tooltip>
+                        <n-popconfirm @positive-click="deleteHook(hook.name)">
+                          <template #trigger>
+                            <n-button size="small" quaternary type="error">
+                              <template #icon>
+                                <n-icon><TrashOutline /></n-icon>
+                              </template>
+                            </n-button>
+                          </template>
+                          确定要删除 Hook "{{ hook.name }}" 吗？
+                        </n-popconfirm>
+                      </n-space>
+                    </template>
+                    <template #description>
+                      <n-space vertical :size="4">
+                        <n-text depth="3">
+                          <n-icon><CodeSlashOutline /></n-icon>
+                          {{ hook.script }}
+                        </n-text>
+                        <n-text depth="3">
+                          触发点: {{ getTriggerDescription(trigger) }}
+                        </n-text>
+                        <n-space v-if="hook.condition">
+                          <n-text depth="3">条件: {{ hook.condition }}</n-text>
+                        </n-space>
+                      </n-space>
+                    </template>
+                  </n-thing>
+                </n-list-item>
+              </n-list>
+
+              <!-- Hook 说明 -->
+              <n-divider />
+              <n-alert type="info" title="Hook 使用说明">
+                <n-space vertical :size="4">
+                  <n-text>Hook 是在特定事件发生时自动执行的脚本，支持 Shell 和 Python。</n-text>
+                  <n-text>脚本会通过环境变量和 stdin 接收上下文数据（JSON 格式）。</n-text>
+                  <n-text>脚本路径支持绝对路径或相对于项目 hooks/ 目录的路径。</n-text>
+                </n-space>
+              </n-alert>
+            </n-spin>
+          </n-tab-pane>
+
           <!-- 关于 -->
           <n-tab-pane name="about" tab="关于">
             <template #tab>
@@ -1068,6 +1486,164 @@ URL：{url}
         </n-tabs>
       </n-card>
     </n-spin>
+
+    <!-- Hook 编辑弹窗 -->
+    <n-modal
+      v-model:show="showHookModal"
+      :title="hookModalMode === 'add' ? '添加 Hook' : '编辑 Hook'"
+      preset="card"
+      style="width: 650px"
+      :mask-closable="false"
+    >
+      <n-form label-placement="left" label-width="100">
+        <n-form-item label="Hook 名称" required>
+          <n-input
+            v-model:value="hookForm.name"
+            placeholder="输入 Hook 名称"
+            :disabled="hookModalMode === 'edit'"
+          />
+        </n-form-item>
+
+        <n-form-item label="触发点" required>
+          <n-select
+            v-model:value="hookForm.trigger"
+            :options="triggerOptions"
+            placeholder="选择触发点"
+            :disabled="hookModalMode === 'edit'"
+          />
+        </n-form-item>
+
+        <n-form-item label="脚本类型" required>
+          <n-select
+            v-model:value="hookForm.type"
+            :options="scriptTypeOptions"
+            placeholder="选择脚本类型"
+          />
+        </n-form-item>
+
+        <n-form-item label="脚本路径" required>
+          <n-input
+            v-model:value="hookForm.script"
+            placeholder="hooks/my_script.sh 或绝对路径"
+          />
+        </n-form-item>
+
+        <n-form-item label="启用状态">
+          <n-switch v-model:value="hookForm.enabled" />
+        </n-form-item>
+
+        <n-form-item label="异步执行">
+          <n-switch v-model:value="hookForm.async" />
+          <n-text depth="3" style="margin-left: 12px">
+            异步执行不会阻塞后续流程
+          </n-text>
+        </n-form-item>
+
+        <n-form-item label="超时时间">
+          <n-input-number
+            v-model:value="hookForm.timeout"
+            :min="1"
+            :max="300"
+            style="width: 150px"
+          />
+          <n-text depth="3" style="margin-left: 12px">秒</n-text>
+        </n-form-item>
+
+        <n-form-item label="重试次数">
+          <n-input-number
+            v-model:value="hookForm.max_retries"
+            :min="0"
+            :max="5"
+            style="width: 150px"
+          />
+        </n-form-item>
+
+        <n-divider style="margin: 16px 0">高级选项</n-divider>
+
+        <n-form-item label="命令行参数">
+          <n-input
+            v-model:value="hookForm.args"
+            placeholder="多个参数用逗号分隔"
+          />
+        </n-form-item>
+
+        <n-form-item label="环境变量">
+          <n-input
+            v-model:value="hookForm.env"
+            type="textarea"
+            :rows="3"
+            placeholder="每行一个，格式: KEY=VALUE"
+          />
+        </n-form-item>
+
+        <n-form-item label="执行条件">
+          <n-input
+            v-model:value="hookForm.condition"
+            placeholder="例如: change_type == 'content_change'"
+          />
+        </n-form-item>
+
+        <n-form-item label="工作目录">
+          <n-input
+            v-model:value="hookForm.working_dir"
+            placeholder="留空使用项目根目录"
+          />
+        </n-form-item>
+      </n-form>
+
+      <template #footer>
+        <n-space justify="end">
+          <n-button @click="showHookModal = false">取消</n-button>
+          <n-button type="primary" :loading="saving" @click="saveHook">
+            {{ hookModalMode === 'add' ? '添加' : '保存' }}
+          </n-button>
+        </n-space>
+      </template>
+    </n-modal>
+
+    <!-- Hook 测试结果弹窗 -->
+    <n-modal
+      v-model:show="showTestResultModal"
+      title="Hook 测试结果"
+      preset="card"
+      style="width: 700px"
+    >
+      <template v-if="testResult">
+        <n-descriptions :column="2" label-placement="left" bordered>
+          <n-descriptions-item label="Hook 名称">
+            {{ testResult.hook_name }}
+          </n-descriptions-item>
+          <n-descriptions-item label="执行状态">
+            <n-tag :type="testResult.success ? 'success' : 'error'" size="small">
+              {{ testResult.success ? '成功' : '失败' }}
+            </n-tag>
+          </n-descriptions-item>
+          <n-descriptions-item label="退出码">
+            {{ testResult.exit_code ?? '-' }}
+          </n-descriptions-item>
+          <n-descriptions-item label="执行耗时">
+            {{ testResult.execution_time.toFixed(2) }}s
+          </n-descriptions-item>
+          <n-descriptions-item v-if="testResult.error_message" label="错误信息" :span="2">
+            <n-text type="error">{{ testResult.error_message }}</n-text>
+          </n-descriptions-item>
+        </n-descriptions>
+
+        <template v-if="testResult.stdout">
+          <n-divider>标准输出</n-divider>
+          <n-scrollbar style="max-height: 200px">
+            <n-code :code="testResult.stdout" language="text" />
+          </n-scrollbar>
+        </template>
+
+        <template v-if="testResult.stderr">
+          <n-divider>标准错误</n-divider>
+          <n-scrollbar style="max-height: 200px">
+            <n-code :code="testResult.stderr" language="text" />
+          </n-scrollbar>
+        </template>
+      </template>
+    </n-modal>
   </div>
 </template>
 
@@ -1086,6 +1662,21 @@ URL：{url}
 
 :deep(.n-collapse-item__header-main) {
   font-weight: 500;
+}
+
+:deep(.n-tabs .n-tabs-nav) {
+  background: transparent;
+}
+
+:deep(.n-collapse) {
+  background: transparent;
+}
+
+:deep(.n-collapse-item) {
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-default);
+  border-radius: 8px;
+  margin-bottom: 8px;
 }
 
 /* 关于页面样式 */
@@ -1110,7 +1701,7 @@ URL：{url}
   font-size: 28px;
   font-weight: 600;
   margin: 0;
-  background: linear-gradient(90deg, #18a058, #2080f0);
+  background: linear-gradient(90deg, #10b981, #3b82f6);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -1118,7 +1709,7 @@ URL：{url}
 
 .project-description {
   font-size: 16px;
-  color: var(--n-text-color-3);
+  color: var(--color-text-muted);
   margin: 0;
 }
 

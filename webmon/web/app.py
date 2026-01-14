@@ -22,6 +22,7 @@ from webmon.web.api.history import router as history_router
 from webmon.web.api.settings import router as settings_router
 from webmon.web.api.notification import router as notification_router
 from webmon.web.api.about import router as about_router
+from webmon.web.api.hooks import router as hooks_router
 from webmon.web.services.monitor_service import get_monitor_service
 
 
@@ -102,6 +103,7 @@ def create_app() -> FastAPI:
     app.include_router(settings_router)
     app.include_router(notification_router)
     app.include_router(about_router)
+    app.include_router(hooks_router)
 
     # 静态文件目录
     static_dir = Path(__file__).parent / "static"
