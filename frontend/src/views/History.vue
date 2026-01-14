@@ -381,7 +381,9 @@ const loadHookHistory = async () => {
     })
     hookHistory.value = response.items
   } catch (error) {
-    console.error('加载 Hook 执行历史失败:', error)
+    // Hook 系统可能未启用或不可用，静默处理
+    console.debug('加载 Hook 执行历史失败:', error)
+    hookHistory.value = []
   } finally {
     isLoadingHooks.value = false
   }
@@ -395,7 +397,9 @@ const loadHookStatistics = async () => {
       days: 7,
     })
   } catch (error) {
-    console.error('加载 Hook 统计失败:', error)
+    // Hook 系统可能未启用或不可用，静默处理
+    console.debug('加载 Hook 统计失败:', error)
+    hookStatistics.value = null
   }
 }
 
@@ -476,8 +480,13 @@ watch(searchKeyword, () => {
 
 // 初始化
 onMounted(async () => {
+  // 先加载任务列表和主历史记录（关键数据）
   await taskStore.fetchTasks()
-  await Promise.all([loadHistory(), loadStatistics(), loadHookHistory(), loadHookStatistics()])
+  await Promise.all([loadHistory(), loadStatistics()])
+
+  // 异步加载 Hook 数据（非阻塞）
+  loadHookHistory()
+  loadHookStatistics()
 })
 
 // 导出下拉菜单选项
